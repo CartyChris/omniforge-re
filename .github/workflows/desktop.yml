@@ -1,0 +1,117 @@
+name: Desktop (macOS)
+# Builds the real .app and .dmg for Apple Silicon (primary) and Intel, then VERIFIES them before anything is published:
+# architecture, bundled engine + resources, signature state, DMG contents, and a launch smoke test of the engine.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths: ["apps/desktop/**", "packages/server/**", "apps/web/**", ".github/workflows/desktop.yml"]
+permissions: { contents: write }
+concurrency:
+  group: "desktop-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: aarch64-apple-darwin, arch: arm64, label: apple-silicon }
+          - { target: x86_64-apple-darwin, arch: x86_64, label: intel }
+    runs-on: macos-latest   # Apple Silicon runner; the Intel app is cross-compiled
+    timeout-minutes: 60
+    env:
+      # Optional signing + notarisation. Without these secrets the app is built UNSIGNED (ad-hoc) and README says how to open it.
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: oven-sh/setup-bun@v2
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: "${{ matrix.target }}" }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: "apps/desktop/src-tauri -> target", key: "${{ matrix.target }}" }
+      - run: pnpm install --frozen-lockfile
+
+      - name: Compile the local engine for ${{ matrix.target }}
+        run: pnpm --filter @omniforge/desktop sidecar -- --target ${{ matrix.target }}
+
+      - name: Build the app (.app + .dmg)
+        run: pnpm --filter @omniforge/desktop exec tauri build --target ${{ matrix.target }} --bundles app,dmg
+
+      - name: Verify the bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          B=apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle
+          APP="$B/macos/OmniForge RE.app"
+          DMG=$(ls "$B"/dmg/*.dmg | head -1)
+          test -d "$APP" || { echo "::error::no .app produced"; exit 1; }
+          echo "--- architecture"; lipo -info "$APP/Contents/MacOS/omniforge-re"; lipo -info "$APP/Contents/MacOS/omniforge-bridge"
+          lipo -info "$APP/Contents/MacOS/omniforge-re" | grep -q "${{ matrix.arch }}" || { echo "::error::main binary is not ${{ matrix.arch }}"; exit 1; }
+          lipo -info "$APP/Contents/MacOS/omniforge-bridge" | grep -q "${{ matrix.arch }}" || { echo "::error::engine is not ${{ matrix.arch }}"; exit 1; }
+          echo "--- resources"; test -f "$APP/Contents/Resources/playwright-core/index.mjs" || { echo "::error::playwright-core resource missing"; exit 1; }
+          test -f "$APP/Contents/Resources/icon.icns" || { echo "::error::icon missing"; exit 1; }
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Contents/Info.plist" | grep -qx "com.omniforge.re"
+          /usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$APP/Contents/Info.plist"
+          echo "--- signature (informational: ad-hoc when no Apple secrets)"; codesign -dv --verbose=2 "$APP" 2>&1 | head -12 || true
+          codesign --verify --deep --strict "$APP" && echo "signature verifies" || echo "::warning::signature does not verify (expected only for unsigned builds)"
+          echo "--- dmg"; hdiutil verify "$DMG"
+          MNT=$(mktemp -d); hdiutil attach "$DMG" -mountpoint "$MNT" -nobrowse -quiet
+          test -d "$MNT/OmniForge RE.app" || { echo "::error::DMG does not contain the app"; hdiutil detach "$MNT" -quiet; exit 1; }
+          hdiutil detach "$MNT" -quiet
+          echo "APP=$APP" >> "$GITHUB_ENV"; echo "DMG=$DMG" >> "$GITHUB_ENV"
+
+      - name: Launch smoke test (the real app starts its engine and the engine answers)
+        if: matrix.arch == 'arm64'
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG="$HOME/Library/Logs/com.omniforge.re/engine.log"; rm -f "$LOG"
+          "$APP/Contents/MacOS/omniforge-re" > app.out 2>&1 &
+          PID=$!
+          for i in $(seq 1 60); do grep -q "engine ready on" "$LOG" 2>/dev/null && break; sleep 1; done
+          cat "$LOG" || true
+          URL=$(grep -o 'http://127.0.0.1:[0-9]*' "$LOG" | head -1)
+          test -n "$URL" || { echo "::error::engine never became ready"; cat app.out; kill $PID || true; exit 1; }
+          curl -fsS "$URL/bridge/health" | tee health.json
+          grep -q '"name":"omniforge-bridge"' health.json
+          # access control is live: unauthenticated calls are refused
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/bridge/info")" = "401"
+          if grep -q "ui: UI could not reach the engine" "$LOG"; then echo "::error::the UI could not reach the engine"; cat "$LOG"; kill $PID || true; exit 1; fi
+          kill $PID; sleep 2
+          pgrep -f omniforge-bridge && { echo "::error::engine outlived the app"; exit 1; } || echo "engine stopped with the app"
+
+      - name: Checksums
+        shell: bash
+        run: |
+          mkdir -p dist-desktop
+          cp "$DMG" "dist-desktop/OmniForge-RE_${{ matrix.label }}.dmg"
+          (cd dist-desktop && shasum -a 256 *.dmg | tee "SHA256SUMS-${{ matrix.label }}.txt")
+      - uses: actions/upload-artifact@v4
+        with: { name: "omniforge-re-${{ matrix.label }}", path: dist-desktop/*, if-no-files-found: error, retention-days: 30 }
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: dist, merge-multiple: true }
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          body: |
+            **macOS (Apple Silicon and Intel).** Builds are verified in CI (architecture, bundled engine, DMG contents, launch smoke test).
+            Unless the release notes say it is signed and notarised, the app is **unsigned**: after copying it to Applications, right-click → Open once, or run
+            `xattr -dr com.apple.quarantine "/Applications/OmniForge RE.app"`.
