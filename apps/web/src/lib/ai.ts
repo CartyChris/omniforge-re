@@ -5,6 +5,7 @@ import { vault, VaultLocked } from "./vault";
 import { smartFetch } from "./net";
 import { readSSE } from "./bridge";
 import { requestApproval } from "./approvals";
+import type { LocalWorkspace } from "./localfs";
 
 export const meters = new Map<string, UsageMeter>();
 export const keyName = (id: string) => `provider:${id}`;
@@ -110,17 +111,17 @@ export function bridgeRunner(rootId: string): CommandRunner | undefined {
   };
 }
 
-export async function runPlan(tasks: AgentTask[], o: { onUpdate: (t: AgentTask[]) => void; signal?: AbortSignal; rootId?: string; brief?: string; concurrency?: number; skip?: Set<string> }) {
+export async function runPlan(tasks: AgentTask[], o: { onUpdate: (t: AgentTask[]) => void; signal?: AbortSignal; rootId?: string; local?: LocalWorkspace; brief?: string; concurrency?: number; skip?: Set<string> }) {
   const { providers } = await loadProviders();
-  const fs = projectFS();
+  const fs = o.local?.fs ?? projectFS();
   const ctx: RunContext = {
-    tools: { fs, writes: [], deletes: [], runner: o.rootId ? bridgeRunner(o.rootId) : undefined, approve: (cmd) => requestApproval({ kind: "command", title: "Run this command?", detail: "An AI agent wants to run a command in your project folder.", command: cmd, danger: /rm\s|sudo|curl[^|]*\|\s*(ba)?sh|chmod|mkfs|dd\s/.test(cmd) }) },
+    tools: { fs, writes: [], deletes: [], runner: o.local?.runner ?? (o.rootId ? bridgeRunner(o.rootId) : undefined), approve: (cmd) => requestApproval({ kind: "command", title: "Run this command?", detail: "An AI agent wants to run a command in your project folder.", command: cmd, danger: /rm\s|sudo|curl[^|]*\|\s*(ba)?sh|chmod|mkfs|dd\s/.test(cmd) }) },
     providerFor: (m) => providers.find((p) => p.id === m.provider),
     models: useApp.getState().models, prefs: { privacy: useApp.getState().settings.localOnly ? "local-only" : "any", optimise: useApp.getState().settings.optimise, assignments: useApp.getState().settings.assignments },
     projectBrief: o.brief, signal: o.signal,
   };
   const res = await executeGraph(tasks, ctx, { onUpdate: o.onUpdate, signal: o.signal, concurrency: o.concurrency ?? 3, skip: o.skip });
-  fs.flush();
+  await (fs as { flush(): void | Promise<void> }).flush();
   return res;
 }
 export { memoryFS };
