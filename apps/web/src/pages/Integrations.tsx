@@ -73,8 +73,9 @@ function VercelCard() {
 
 function Companion() {
   const { bridgeState, bridgeInfo, bridge, connectBridge, disconnectBridge, settings, patchSettings } = useApp();
-  const [url, setUrl] = useState(settings.bridgeUrl); const [code, setCode] = useState(""); const [busy, setBusy] = useState(false); const [found, setFound] = useState<boolean | null>(null);
-  useEffect(() => { let alive = true; void probe(url, 1200).then((p) => alive && setFound(!!p)); return () => { alive = false; }; }, [url, bridgeState]);
+  const [url, setUrl] = useState(settings.bridgeUrl); const [code, setCode] = useState(""); const [busy, setBusy] = useState(false); const [found, setFound] = useState<boolean | undefined | null>(undefined);
+  // Looking for the app means a request to localhost, which browsers may gate behind a permission prompt: do it on demand.
+  const look = useCallback(async () => { setFound(null); setFound(!!(await probe(url, 1500))); }, [url]);
   const doPair = async () => { setBusy(true); try { const c = await pair(url, code); patchSettings({ bridgeUrl: url }); await connectBridge(c); setCode(""); toast.success("Paired with the desktop app"); } catch (e) { toast.error((e as Error).message); } finally { setBusy(false); } };
   const connected = bridgeState === "connected";
   return (
@@ -85,9 +86,9 @@ function Companion() {
             <div className="space-y-2 text-[13px] text-muted"><p className="font-medium text-fg">The macOS app unlocks everything</p><p>Install OmniForge RE for macOS (Apple Silicon or Intel), open <b>Settings → Pair a browser</b>, then enter the code here. The connection is loopback-only, authenticated, and scoped — the browser can never run commands or write files unless you grant it per session.</p><a className="inline-flex items-center gap-1 text-accent hover:underline" href={releases} target="_blank" rel="noopener noreferrer">Get the macOS app<ExternalLink className="size-3.5" /></a></div>
             <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); void doPair(); }}>
               <Field label="App address"><Input value={url} onChange={(e) => setUrl(e.target.value)} spellCheck={false} /></Field>
-              <p className="flex items-center gap-2 text-xs">{found === null ? <Loader2 className="size-3.5 animate-spin" /> : <StatusDot tone={found ? "ok" : "idle"} />}<span className={found ? "text-ok" : "text-muted"}>{found === null ? "Looking for the app…" : found ? "Desktop app found" : "Not found — is OmniForge RE running on this Mac?"}</span></p>
+              <p className="flex items-center gap-2 text-xs">{found === null ? <Loader2 className="size-3.5 animate-spin" /> : <StatusDot tone={found ? "ok" : "idle"} />}<span className={found ? "text-ok" : "text-muted"}>{found === undefined ? "Not checked yet" : found === null ? "Looking for the app…" : found ? "Desktop app found" : "Not found — is OmniForge RE running on this Mac?"}</span><button type="button" className="ml-auto text-accent hover:underline" onClick={look}>Check</button></p>
               <Field label="Pairing code"><Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="ABCD-1234" className="font-mono tracking-widest" autoComplete="off" /></Field>
-              <Button type="submit" variant="primary" icon={<Link2 className="size-4" />} loading={busy} disabled={!found || code.trim().length < 4}>Pair</Button>
+              <Button type="submit" variant="primary" icon={<Link2 className="size-4" />} loading={busy} disabled={found === false || code.trim().length < 4}>Pair</Button>
             </form></div>}
       </CardBody></Card>
   );

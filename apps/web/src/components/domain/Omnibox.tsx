@@ -50,7 +50,7 @@ export function Omnibox({ autoFocus, compact, onStarted }: { autoFocus?: boolean
         <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent">{d.kind === "repo" ? <GitFork className="size-5" /> : <Globe className="size-5" />}</div>
         <textarea value={text} onChange={(e) => setText(e.target.value)} rows={1} autoFocus={autoFocus} aria-label="Website URL, GitHub repository, or files to analyse" spellCheck={false}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }}
-          placeholder="Paste a website URL or GitHub repo — or drop a folder / ZIP here"
+          placeholder="Paste a website or GitHub repo URL…"
           className="h-10 min-h-10 flex-1 resize-none bg-transparent py-2.5 text-[15px] leading-5 outline-none placeholder:text-faint" style={{ height: text.includes("\n") ? Math.min(160, 24 * (text.split("\n").length + 1)) : undefined }} />
         <Button variant="primary" size="lg" className="shrink-0" onClick={submit} disabled={d.kind === "empty"} icon={<ArrowRight className="size-4" />}><span className="hidden sm:inline">{d.kind === "repo" ? "Rip" : "Analyze"}</span></Button>
       </div>

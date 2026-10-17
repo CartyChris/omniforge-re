@@ -22,11 +22,13 @@ const TONE = { fits: "ok", tight: "warn", "too-large": "bad", unknown: "neutral"
 export default function LocalModels() {
   const { models, providers, setProviders, bridge, bridgeInfo, bridgeState, settings, patchSettings, modelsLoading } = useApp();
   const [scan, setScan] = useState<DiscoveredService[] | null>(null); const [scanning, setScanning] = useState(false);
+  // With the desktop app, the companion already probed the ports (server-side, no browser permission prompts). In a plain browser the
+  // scan only runs when asked: probing localhost can trigger the browser's "local network access" prompt.
   const run = useCallback(async () => {
     setScanning(true);
     try { setScan(await discoverLocalServices(smartFetch(() => useApp.getState().bridge))); } finally { setScanning(false); }
   }, []);
-  useEffect(() => { void run(); }, [run, bridgeState]);
+  useEffect(() => { if (bridgeState === "connected") void run(); }, [run, bridgeState]);
   const services = scan ?? [];
   const mem = bridgeInfo?.system.memTotalGB;
   const local = useMemo(() => models.filter((m) => m.local), [models]);
@@ -40,7 +42,7 @@ export default function LocalModels() {
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
       <SectionTitle title="Local Models" sub="Run AI on your own machine. OmniForge finds the runtimes you have, lists their models with honest memory-fit estimates, and routes private work to them."
-        right={<Button variant="secondary" loading={scanning || modelsLoading} icon={<RefreshCw className="size-4" />} onClick={async () => { await run(); await refreshModels(); }}>Rescan</Button>} />
+        right={<Button variant={scan ? "secondary" : "primary"} loading={scanning || modelsLoading} icon={<RefreshCw className="size-4" />} onClick={async () => { await run(); await refreshModels(); }}>{scan || bridgeState === "connected" ? "Rescan" : "Scan this computer"}</Button>} />
 
       {bridgeState !== "connected" && <div className="flex gap-3 rounded-xl border border-info/30 bg-info/10 p-3 text-[13px] text-info"><Info className="mt-0.5 size-4 shrink-0" /><p>Browsers often can't reach local servers (HTTPS pages, Safari, CORS). With the OmniForge desktop app, local model traffic is relayed securely and everything below works. Chrome/Firefox on <code>localhost</code> can still work if the server allows this origin.</p></div>}
 
