@@ -53,11 +53,12 @@ export function chooseModel(task: TaskKind, models: ModelInfo[], prefs: RoutingP
     let score = 0;
     const tier = tierOf(m);
     const rank = profile.prefer.indexOf(tier);
-    if (rank >= 0) { score += (profile.prefer.length - rank) * 20; reasons.push(`${tier} tier suits ${profile.label.toLowerCase()}`); }
+    const tierWeight = prefs.optimise === "cost" ? 8 : 20; // cost mode: cheapest model that meets the requirements
+    if (rank >= 0) { score += (profile.prefer.length - rank) * tierWeight; reasons.push(`${tier} tier suits ${profile.label.toLowerCase()}`); }
     score -= missing.length * 15;
     if (missing.length) reasons.push(`missing ${missing.join(", ")}`);
     if (prefs.optimise === "cost") {
-      if (m.local) { score += 25; reasons.push("local = free"); }
+      if (m.local) { score += 30; reasons.push("local = free"); }
       else if (m.pricePerMTok) score += Math.max(0, 15 - Math.log10(1 + m.pricePerMTok.input + m.pricePerMTok.output) * 6);
       if (m.paramsB !== undefined) score -= Math.min(15, m.paramsB / 8);
     } else if (prefs.optimise === "latency") {
