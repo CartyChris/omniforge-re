@@ -26,6 +26,9 @@ export interface SafeResponse {
   truncated: boolean;
   ms: number;
   redirects: string[];
+  /** Cookie names + attributes set by the response. Values are never retained. */
+  cookies: { name: string; secure: boolean; httpOnly: boolean; sameSite?: string }[];
+  cookieNames: string[];
   text(): string;
 }
 
@@ -101,6 +104,21 @@ export async function safeFetch(input: string, opts: SafeFetchOptions = {}): Pro
       const { body, truncated } = await readCapped(res, max, ctrl.signal);
       const headers: Record<string, string> = {};
       res.headers.forEach((v, k) => (headers[k.toLowerCase()] = v));
+      const rawCookies: string[] = (res.headers as unknown as { getSetCookie?: () => string[] }).getSetCookie?.() ?? [];
+      const cookies = rawCookies
+        .map((c) => {
+          const [pair, ...attrs] = c.split(";").map((x) => x.trim());
+          const low = attrs.map((a) => a.toLowerCase());
+          return {
+            name: (pair ?? "").split("=")[0]!.trim(),
+            secure: low.includes("secure"),
+            httpOnly: low.includes("httponly"),
+            sameSite: low.find((a) => a.startsWith("samesite="))?.split("=")[1],
+          };
+        })
+        .filter((c) => c.name);
+      const cookieNames = cookies.map((c) => c.name);
+      delete headers["set-cookie"]; // never keep cookie values
       return {
         url: url.toString(),
         status: res.status,
@@ -110,6 +128,8 @@ export async function safeFetch(input: string, opts: SafeFetchOptions = {}): Pro
         truncated,
         ms: Date.now() - started,
         redirects,
+        cookies,
+        cookieNames,
         text: () => decoder.decode(body),
       };
     }

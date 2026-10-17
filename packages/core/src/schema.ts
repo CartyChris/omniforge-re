@@ -269,6 +269,14 @@ export interface Investigation {
   limitations: string[];
   questions: string[];
   log: LogEntry[];
+  /** UI components seen in JS (AST) or recovered source. */
+  components?: { name: string; source: string; provenance: EvidenceKind }[];
+  /** Route strings with where they were seen. */
+  routes?: { route: string; source: string; via: "link" | "sitemap" | "bundle" | "file-system" }[];
+  designTokens?: { variables: Record<string, string>; colors: { value: string; count: number }[]; fonts: { value: string; count: number }[] };
+  /** Third-party hosts contacted by pages/assets, with what they were loaded for. */
+  thirdParties?: { host: string; kinds: string[]; count: number }[];
+  envVars?: { name: string; files: string[] }[];
   summary?: string; // optional AI-written overview (labelled as such in UI)
 }
 

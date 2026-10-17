@@ -1,0 +1,102 @@
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { unzipSync, strFromU8, zipSync, strToU8 } from "fflate";
+// @ts-expect-error plain ESM fixture
+import { createFixture } from "../../../fixtures/server.mjs";
+import { investigate } from "../src/crawl/investigate";
+import { buildSections, exportBundle, renderHtml, renderMarkdown, htmlEsc } from "../src/report/report";
+import { createProject, createSnapshot, diffSnapshots, exportProject, importProject, ProjectImportError, restoreSnapshot, upsertInvestigation, writeFile } from "../src/project/project";
+import type { Investigation } from "../src/schema";
+
+let fx: ReturnType<typeof createFixture>;
+let inv: Investigation;
+beforeAll(async () => {
+  fx = createFixture();
+  const base = await fx.listen();
+  inv = await investigate({ targets: [base + "/"], allowPrivate: true, config: { delayMs: 0 } });
+}, 60_000);
+afterAll(async () => { await fx.close(); });
+
+describe("report", () => {
+  it("contains all 20 required sections in order, plus an evidence appendix", () => {
+    const s = buildSections(inv);
+    expect(s.map((x) => x.n)).toEqual(Array.from({ length: 20 }, (_, i) => i + 1));
+    const md = renderMarkdown(inv);
+    expect(md).toMatch(/## 13\. Recovered code and artifacts/);
+    expect(md).toMatch(/## 20\. Reconstruction recommendations/);
+    expect(md).toMatch(/## Appendix — Evidence index/);
+    expect(md).toMatch(/```mermaid\ngraph TD/);
+  });
+  it("states unknowns explicitly instead of padding", () => {
+    const md = renderMarkdown(inv);
+    expect(md).toMatch(/Unknown: runtime UI states/);
+    expect(md).toMatch(/Server-side logic/);
+    expect(md).toMatch(/not\*\* visible from static analysis|are \*\*not\*\* visible/);
+  });
+  it("distinguishes recovered from reconstructed from inferred", () => {
+    const md = renderMarkdown(inv);
+    expect(md).toMatch(/RECOVERED/);
+    expect(md).toMatch(/src\/App\.tsx/);
+    expect(inv.evidence.some((e) => e.kind === "inferred")).toBe(true);
+  });
+  it("escapes hostile content so a malicious page cannot inject script into the report", () => {
+    const evil: Investigation = { ...inv, name: `<script>alert(1)</script>`, pages: inv.pages.map((p, i) => (i === 0 ? { ...p, title: `<img src=x onerror=alert(1)>` } : p)), technologies: [{ name: `"><svg onload=alert(1)>`, category: "x", confidence: 1, evidence: [] }], features: [] };
+    const html = renderHtml(evil);
+    expect(html).not.toMatch(/<script>alert/i);
+    expect(html).not.toMatch(/<svg onload/i);
+    expect(html).not.toMatch(/<img src=x/i);
+    expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(htmlEsc(`a"b'c<d>&`)).toBe("a&quot;b&#39;c&lt;d&gt;&amp;");
+  });
+  it("exports a ZIP bundle with every artefact and recovered sources", () => {
+    const zip = unzipSync(exportBundle(inv));
+    expect(Object.keys(zip).sort()).toEqual(expect.arrayContaining(["README.txt", "evidence.json", "features.json", "graph.json", "recovered/src/App.tsx", "recovered/src/api.ts", "report.html", "report.json", "report.md"]));
+    expect(strFromU8(zip["recovered/src/App.tsx"]!)).toBe("export function App(){ return null }\n"); // byte-for-byte original
+    expect(JSON.parse(strFromU8(zip["report.json"]!)).id).toBe(inv.id);
+    expect(JSON.parse(strFromU8(zip["graph.json"]!)).nodes.length).toBe(inv.graph.nodes.length);
+  });
+  it("never writes recovered files outside recovered/", () => {
+    const evil = { ...inv, files: [{ ...inv.files[0]!, path: "../../etc/cron.d/x", content: "boom" }] };
+    expect(Object.keys(unzipSync(exportBundle(evil))).some((k) => k.includes(".."))).toBe(false);
+  });
+});
+
+describe("project persistence", () => {
+  it("round-trips through a ZIP export with investigations and files intact", () => {
+    let p = createProject("Demo", { localOnly: true });
+    p = upsertInvestigation(p, inv);
+    p = writeFile(p, "src/App.tsx", "export default 1");
+    const back = importProject(exportProject(p));
+    expect(back.id).toBe(p.id);
+    expect(back.localOnly).toBe(true);
+    expect(back.investigations[0]!.id).toBe(inv.id);
+    expect((back.investigations[0] as Investigation).features.length).toBe(inv.features.length);
+    expect(back.workspace.files).toEqual({ "src/App.tsx": "export default 1" });
+  });
+  it("snapshots, restores (with automatic backup) and diffs", () => {
+    let p = writeFile(createProject("S"), "a.txt", "v1");
+    const { project, snapshot } = createSnapshot(p, "first");
+    p = writeFile(writeFile(project, "a.txt", "v2"), "b.txt", "new");
+    expect(diffSnapshots(snapshot.files, p.workspace.files)).toEqual({ added: ["b.txt"], removed: [], changed: ["a.txt"] });
+    const restored = restoreSnapshot(p, snapshot.id);
+    expect(restored.workspace.files).toEqual({ "a.txt": "v1" });
+    expect(restored.snapshots[0]!.label).toMatch(/Auto-backup/);
+    expect(restored.snapshots[0]!.files["b.txt"]).toBe("new"); // the undo path exists
+  });
+  it("rejects unsafe workspace paths on write", () => {
+    expect(() => writeFile(createProject("x"), "../escape.txt", "x")).toThrow(/Unsafe/);
+  });
+  it("validates imports: wrong version, garbage, missing project.json", () => {
+    expect(() => importProject("not json")).toThrow(ProjectImportError);
+    expect(() => importProject(JSON.stringify({ schemaVersion: 99 }))).toThrow(/valid OmniForge project/);
+    expect(() => importProject(zipSync({ "other.txt": strToU8("x") }))).toThrow(/no project\.json/);
+  });
+  it("sanitises hostile workspace paths in imported projects", () => {
+    const p = createProject("evil");
+    const raw = JSON.parse(JSON.stringify(p));
+    raw.workspace.files = { "../../root/.ssh/authorized_keys": "k", "/etc/passwd": "p", "ok/file.ts": "fine" };
+    raw.workspace.open = ["../../root/.ssh/authorized_keys", "ok/file.ts"];
+    const back = importProject(JSON.stringify(raw));
+    expect(Object.keys(back.workspace.files)).toEqual(["ok/file.ts"]);
+    expect(back.workspace.open).toEqual(["ok/file.ts"]);
+  });
+});

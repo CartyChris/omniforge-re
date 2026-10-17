@@ -20,6 +20,14 @@ export interface ExtractedPage {
   navLinks: { text: string; href: string }[];
   interactive: { buttons: number; inputs: number; dialogs: number; links: number };
   a11y: { imagesWithoutAlt: number; inputsWithoutLabel: number; hasLang: boolean; hasMain: boolean };
+  signals: {
+    tables: number; canvas: number; svg: number; video: number; fileInputs: number; searchInputs: number;
+    draggable: number; passwordInputs: number; hreflangs: string[]; colorSchemeMeta: boolean; commandHint: boolean;
+    tabs: number; accordions: number; carousels: number; toasts: number; breadcrumbs: boolean; pagination: boolean;
+  };
+  blockingScripts: number;
+  crossOriginScriptsWithoutSri: string[];
+  insecureSubresources: string[];
   dataAttributes: string[];
   ids: string[];
   classNames: string[];
@@ -141,6 +149,42 @@ export function extractPage(html: string, pageUrl: string): ExtractedPage {
     if (attribs.class && classNames.size < 1500) for (const c of attribs.class.split(/\s+/)) if (c) classNames.add(c);
   });
 
+  const searchInputs = $('input[type=search], input[role=searchbox], [role=search] input, input[name*=search i], input[name=q], input[placeholder*=search i], input[aria-label*=search i]').length;
+  const signals = {
+    tables: $("table").length,
+    canvas: $("canvas").length,
+    svg: $("svg").length,
+    video: $("video").length,
+    fileInputs: $("input[type=file]").length,
+    searchInputs,
+    draggable: $('[draggable="true"]').length,
+    passwordInputs: $("input[type=password]").length,
+    hreflangs: set($("link[rel=alternate][hreflang]").map((_, el) => $(el).attr("hreflang") ?? null).get()),
+    colorSchemeMeta: $('meta[name="color-scheme"], meta[name="theme-color"][media*="prefers-color-scheme"]').length > 0,
+    commandHint: /(?:⌘|Ctrl\+?)\s?K\b/.test($("body").text()) || $('[role=combobox][aria-haspopup=listbox], [cmdk-root]').length > 0,
+    tabs: $('[role=tablist]').length,
+    accordions: $('details, [data-orientation][data-radix-collection-item], [aria-expanded][aria-controls]').length,
+    carousels: $('[class*=carousel], [class*=swiper], [class*=slick-]').length,
+    toasts: $('[role=alert], [role=status], [class*=toast]').length,
+    breadcrumbs: $('[aria-label*=breadcrumb i], nav.breadcrumb, ol.breadcrumb').length > 0,
+    pagination: $('[aria-label*=pagination i], nav.pagination, ul.pagination').length > 0,
+  };
+
+  const blockingScripts = $("head script[src]").filter((_, el) => !$(el).is("[async],[defer],[type=module]")).length;
+  const pageOrigin = (() => { try { return new URL(pageUrl).origin; } catch { return ""; } })();
+  const crossOriginScriptsWithoutSri = set(
+    $("script[src], link[rel=stylesheet][href]").map((_, el) => {
+      const u = abs($(el).attr("src") ?? $(el).attr("href"), base);
+      if (!u) return null;
+      try { return new URL(u).origin !== pageOrigin && !$(el).attr("integrity") ? u : null; } catch { return null; }
+    }).get(),
+  );
+  const insecureSubresources = pageUrl.startsWith("https:")
+    ? set([...scripts, ...styles, ...images, ...media, ...iframes].filter((u) => u.startsWith("http://")))
+    : [];
+  const canonical = abs($('link[rel="canonical"]').attr("href"), base);
+  if (canonical) meta["link:canonical"] = canonical;
+
   $("script, style, noscript, template").remove();
   const text = $("body").text().replace(/\s+/g, " ").trim().slice(0, 4000);
 
@@ -173,6 +217,10 @@ export function extractPage(html: string, pageUrl: string): ExtractedPage {
       hasLang: !!$("html").attr("lang"),
       hasMain: $('main, [role="main"]').length > 0,
     },
+    signals,
+    blockingScripts,
+    crossOriginScriptsWithoutSri,
+    insecureSubresources,
     dataAttributes: [...dataAttributes],
     ids: [...ids],
     classNames: [...classNames],
