@@ -1,0 +1,15 @@
+node_modules
+.next
+out
+dist
+.turbo
+*.log
+.env
+.env.*
+!.env.example
+.vercel
+apps/desktop/src-tauri/target
+apps/desktop/src-tauri/gen
+test-results
+playwright-report
+.DS_Store
