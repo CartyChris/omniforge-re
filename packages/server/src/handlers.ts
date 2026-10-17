@@ -194,6 +194,6 @@ export async function probeHandler(req: Request, o: HandlerOptions): Promise<Res
     const protectedPage = vercel && (res.status === 401 || res.status === 403) && /authentication required|vercel authentication|sso/i.test(text + (res.headers.get("set-cookie") ?? ""));
     return json({ ok: res.ok, status: res.status, ms: Date.now() - t0, finalUrl: res.url, title, vercel, protected: protectedPage, contentType: res.headers.get("content-type") ?? undefined });
   } catch (e) {
-    return json({ ok: false, status: 0, ms: Date.now() - t0, error: (e as Error).name === "AbortError" ? "Timed out after 15 s" : (e as Error).message });
+    const code = (e as { cause?: { code?: string } }).cause?.code; return json({ ok: false, status: 0, ms: Date.now() - t0, error: (e as Error).name === "AbortError" ? "Timed out after 15 s" : `${(e as Error).message}${code ? ` (${code})` : ""}` });
   } finally { clearTimeout(timer); }
 }

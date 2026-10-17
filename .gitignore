@@ -16,3 +16,4 @@ playwright-report
 apps/desktop/src-tauri/binaries/
 apps/desktop/src-tauri/resources/playwright-core/
 apps/desktop/src-tauri/icons/source.png
+.vercel/
