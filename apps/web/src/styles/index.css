@@ -1,0 +1,95 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
+
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-elevated: var(--elevated);
+  --color-overlay: var(--overlay);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+  --color-teal: var(--teal);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+  --color-info: var(--info);
+  --radius-card: 14px;
+  --shadow-pop: 0 12px 40px -12px rgb(0 0 0 / 0.55), 0 0 0 1px var(--line);
+}
+
+:root, [data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #090b10;
+  --surface: #0f1219;
+  --elevated: #151923;
+  --overlay: #1a1f2b;
+  --line: #1f2430;
+  --line-strong: #2b3242;
+  --fg: #e8eaf0;
+  --muted: #9097a9;
+  --faint: #5d6478;
+  --accent: #8b7bff;
+  --accent-fg: #0b0a1a;
+  --accent-soft: rgb(139 123 255 / 0.14);
+  --teal: #2dd4bf;
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --bad: #f87171;
+  --info: #60a5fa;
+}
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f7fa;
+  --surface: #ffffff;
+  --elevated: #ffffff;
+  --overlay: #f0f2f7;
+  --line: #e4e7ee;
+  --line-strong: #cfd4df;
+  --fg: #12141a;
+  --muted: #596073;
+  --faint: #8a91a3;
+  --accent: #5b45f0;
+  --accent-fg: #ffffff;
+  --accent-soft: rgb(91 69 240 / 0.1);
+  --teal: #0d9488;
+  --ok: #16a34a;
+  --warn: #b45309;
+  --bad: #dc2626;
+  --info: #2563eb;
+}
+
+html, body, #root { height: 100%; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-sans); font-feature-settings: "cv11", "ss01"; -webkit-font-smoothing: antialiased; overscroll-behavior: none; }
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+::selection { background: color-mix(in oklab, var(--accent) 35%, transparent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+button, [role="button"], a { -webkit-tap-highlight-color: transparent; }
+
+.bg-grid { background-image: radial-gradient(circle at 1px 1px, color-mix(in oklab, var(--fg) 7%, transparent) 1px, transparent 0); background-size: 22px 22px; }
+.glow { box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 40%, transparent), 0 8px 40px -8px color-mix(in oklab, var(--accent) 45%, transparent); }
+.text-gradient { background: linear-gradient(120deg, var(--accent), var(--teal)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.safe-b { padding-bottom: env(safe-area-inset-bottom); }
+
+@keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes shimmer { 100% { transform: translateX(100%); } }
+@keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+.animate-in { animation: fade-in .22s ease-out both; }
+@media (prefers-reduced-motion: reduce) { *, ::before, ::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; } }
+
+/* React Flow theming */
+.react-flow { --xy-background-color: transparent; --xy-edge-stroke: var(--line-strong); --xy-node-border-radius: 10px; }
+.react-flow__attribution { display: none; }
+.react-flow__controls { box-shadow: none; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.react-flow__controls-button { background: var(--elevated); border-bottom: 1px solid var(--line); color: var(--fg); fill: var(--fg); }
+.react-flow__minimap { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }

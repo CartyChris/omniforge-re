@@ -1,0 +1,14 @@
+import { chromium } from "@playwright/test";
+const [,, url, out, w = "1440", h = "900", theme = "dark"] = process.argv;
+const b = await chromium.launch({ executablePath: process.env.CHROME ?? "/opt/pw-browsers/chromium", args: ["--no-sandbox"] });
+const ctx = await b.newContext({ viewport: { width: +w, height: +h }, deviceScaleFactor: 1 });
+const page = await ctx.newPage();
+const errs = [];
+page.on("pageerror", (e) => errs.push("pageerror: " + e.message));
+page.on("console", (m) => { if (m.type() === "error") errs.push("console: " + m.text().slice(0, 200)); });
+await page.addInitScript((t) => { try { localStorage.setItem("omniforge.theme", t); localStorage.setItem("omniforge.settings", JSON.stringify({ onboarded: true, theme: t })); } catch {} }, theme);
+await page.goto(url, { waitUntil: "networkidle" });
+await page.waitForTimeout(800);
+await page.screenshot({ path: out });
+console.log(errs.length ? errs.join("\n") : "no console errors");
+await b.close();

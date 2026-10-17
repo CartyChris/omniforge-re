@@ -61,6 +61,34 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
     }
     if (is("GET", "/bridge/models")) { need(p, "models"); const [svc, clis] = await Promise.all([discoverLocalServices(), detectClis()]); return json({ services: svc, clis: clis.filter((c) => c.status === "ready").map((c) => ({ id: c.id, name: c.name, method: c.method })) }); }
 
+    /* ---- local model servers + API forwarding (so a hosted page never has to touch localhost directly) ---- */
+    if (is("POST", "/bridge/forward")) {
+      need(p, "models");
+      const b = await readJson(req, 30_000_000);
+      let target: URL;
+      try { target = new URL(String(b.url)); } catch { return err("Invalid URL"); }
+      const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(target.hostname);
+      if (loopback) {
+        const port = Number(target.port || 80);
+        const extra = (process.env.OMNIFORGE_LOCAL_PORTS ?? "").split(",").map(Number).filter(Boolean);
+        if (![11434, 1234, 8080, 8000, 8888, 8001, 5000, 7860, 1337, ...extra].includes(port) || target.protocol !== "http:") return err(`Only http on known local model ports is forwarded (got ${target.host}). Set OMNIFORGE_LOCAL_PORTS to add one.`, 403);
+        if (target.pathname.includes("..")) return err("Invalid path");
+      } else {
+        const { FORWARD_ALLOW } = await import("../handlers.js");
+        if (target.protocol !== "https:" || !FORWARD_ALLOW.has(target.hostname)) return err(`${target.hostname} is not an allowed API host.`, 403);
+      }
+      const hdr: Record<string, string> = {};
+      for (const [k, v] of Object.entries<string>(b.headers ?? {})) if (/^(authorization|x-api-key|anthropic-version|anthropic-beta|anthropic-dangerous-direct-browser-access|content-type|accept|x-goog-api-key|http-referer|x-title|openai-organization)$/i.test(k)) hdr[k.toLowerCase()] = String(v);
+      const method = String(b.method ?? "GET").toUpperCase();
+      if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method)) return err("Unsupported method");
+      let up: globalThis.Response;
+      try { up = await fetch(target, { method, headers: hdr, body: method === "GET" ? undefined : (b.body ?? undefined), redirect: "manual", signal: req.signal }); }
+      catch (e) { const cause = (e as { cause?: { code?: string } }).cause?.code; return err(loopback ? `Nothing is listening on ${target.host}${cause ? ` (${cause})` : ""}. Is the model server running?` : `Upstream request failed: ${(e as Error).message}`, 502); }
+      if (up.status >= 300 && up.status < 400) return err("Redirects are not followed", 502);
+      const h = new Headers(); for (const k of ["content-type", "retry-after"]) if (up.headers.get(k)) h.set(k, up.headers.get(k)!);
+      return new Response(up.body, { status: up.status, headers: h });
+    }
+
     /* ---- roots & filesystem ---- */
     if (is("GET", "/bridge/roots")) { need(p, "fs:read"); return json(roots.list().map((r) => ({ id: r.id, label: r.label, writable: r.writable }))); }
     if (is("POST", "/bridge/roots")) { ui(); const b = await readJson(req, 4000); const r = await roots.add(String(b.path), { label: b.label, writable: !!b.writable }); return json(r); }
