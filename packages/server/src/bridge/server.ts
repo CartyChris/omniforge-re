@@ -7,7 +7,7 @@
 import http from "node:http";
 import path from "node:path";
 import { analyzeSnapshot, assessRip, discoverLocalServices, effective, investigateSource, type Investigation } from "@omniforge/core";
-import { analyzeHandler } from "../handlers.js";
+import { analyzeHandler, probeHandler } from "../handlers.js";
 import { HttpError, UserError, bytesToB64, err, json, readJson, sse } from "../http.js";
 import { BlockedUrlError, ProviderError, RightsError } from "@omniforge/core";
 import { AuthError, BridgeAuth, need, type Principal, type Scope, DANGEROUS_SCOPES } from "./auth.js";
@@ -174,6 +174,7 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
 
     /* ---- browser rendering + full local analysis ---- */
     if (is("GET", "/bridge/render/status")) { need(p, "render"); const c = findChrome(); return json({ available: !!c, path: c }); }
+    if (is("POST", "/bridge/probe")) { need(p, "analyze"); return probeHandler(req, { mode: "local" }); }
     if (is("POST", "/bridge/analyze")) {
       need(p, "analyze");
       const body = await req.clone().json().catch(() => ({}));

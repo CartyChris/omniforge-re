@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { gzipSync, strToU8 } from "fflate";
 // @ts-expect-error plain ESM fixture shared with core tests and e2e
 import { createFixture } from "../../../fixtures/server.mjs";
-import { analyzeHandler, clampConfig, forwardHandler, repoFilesHandler, repoInspectHandler, FORWARD_ALLOW } from "../src/handlers";
+import { analyzeHandler, clampConfig, forwardHandler, probeHandler, repoFilesHandler, repoInspectHandler, FORWARD_ALLOW } from "../src/handlers";
 import { createGuardedAgent, nodeNet } from "../src/net";
 
 const post = (path: string, body: unknown, signal?: AbortSignal) => new Request(`http://localhost${path}`, { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json" }, signal });
@@ -166,5 +166,26 @@ describe("forward handler (hosted allow-list)", () => {
   it("does not follow upstream redirects and passes status codes through", async () => {
     expect((await forwardHandler(post("/api/forward", { url: "https://api.openai.com/v1/x" }), { mode: "hosted", net: stub([], 302, { location: "http://internal/" }) })).status).toBe(502);
     expect((await forwardHandler(post("/api/forward", { url: "https://api.openai.com/v1/x" }), { mode: "hosted", net: stub([], 429, { "retry-after": "7" }) })).headers.get("retry-after")).toBe("7");
+  });
+});
+
+describe("probe handler (deployment verification)", () => {
+  let fx: ReturnType<typeof createFixture>; let base: string;
+  beforeAll(async () => { fx = createFixture(); base = await fx.listen(); });
+  afterAll(async () => { await fx.close(); });
+  it("reports status, timing and title for a reachable page and ok:false for a 404", async () => {
+    const good = await (await probeHandler(post("/api/probe", { url: base + "/" }), { mode: "local" })).json();
+    expect(good).toMatchObject({ ok: true, status: 200 });
+    expect(good.ms).toBeGreaterThanOrEqual(0); expect(typeof good.title).toBe("string");
+    const bad = await (await probeHandler(post("/api/probe", { url: base + "/nope-nope" }), { mode: "local" })).json();
+    expect(bad).toMatchObject({ ok: false, status: 404 });
+  });
+  it("reports a connection failure as ok:false instead of throwing", async () => {
+    const r = await (await probeHandler(post("/api/probe", { url: "http://127.0.0.1:1/" }), { mode: "local" })).json();
+    expect(r.ok).toBe(false); expect(r.status).toBe(0); expect(r.error).toBeTruthy();
+  });
+  it("hosted mode refuses private targets (SSRF) and non-POST", async () => {
+    for (const u of ["http://127.0.0.1/", "http://169.254.169.254/", "http://localhost/"]) expect((await probeHandler(post("/api/probe", { url: u }), { mode: "hosted" })).status, u).toBe(400);
+    expect((await probeHandler(new Request("http://x/api/probe"), { mode: "hosted" })).status).toBe(405);
   });
 });

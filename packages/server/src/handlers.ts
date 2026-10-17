@@ -167,3 +167,33 @@ export async function forwardHandler(req: Request, o: HandlerOptions & { extraHo
   out.set("cache-control", "no-store");
   return new Response(upstream.body, { status: upstream.status, headers: out });
 }
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * Verify that a URL really answers (used before the UI ever says "deployed").
+ * Done server-side because browsers can't read cross-origin status codes; guarded like every other fetch.
+ */
+export async function probeHandler(req: Request, o: HandlerOptions): Promise<Response> {
+  if (req.method !== "POST") return err("Use POST", 405);
+  let body: { url?: string };
+  try { body = await readJson(req, 4_000); } catch (e) { return err((e as Error).message, (e as HttpError).status ?? 400); }
+  let url: URL;
+  try { url = validateUrl(String(body.url ?? ""), { allowPrivate: o.mode === "local" }); } catch (e) { return err((e as Error).message, 400, { code: (e as BlockedUrlError).code }); }
+  const net = o.net ?? nodeNet({ allowPrivate: o.mode === "local" });
+  const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 15_000);
+  req.signal?.addEventListener("abort", () => ctrl.abort(), { once: true });
+  const t0 = Date.now();
+  try {
+    const res = (await net.fetch(url.toString(), { redirect: "follow", signal: ctrl.signal, headers: { "user-agent": "OmniForgeRE-verify/1.0", accept: "text/html,*/*" } })) as Response;
+    let text = "";
+    try { const r = res.body?.getReader(); let n = 0; const dec = new TextDecoder(); while (r && n < 65_536) { const { value, done } = await r.read(); if (done) break; n += value.length; text += dec.decode(value, { stream: true }); } await r?.cancel(); } catch { /* body optional */ }
+    const title = text.match(/<title[^>]*>([^<]{0,200})<\/title>/i)?.[1]?.trim();
+    const vercel = !!res.headers.get("x-vercel-id");
+    // Vercel "Deployment Protection" answers 401 with an SSO page: the deployment exists but is not public.
+    const protectedPage = vercel && (res.status === 401 || res.status === 403) && /authentication required|vercel authentication|sso/i.test(text + (res.headers.get("set-cookie") ?? ""));
+    return json({ ok: res.ok, status: res.status, ms: Date.now() - t0, finalUrl: res.url, title, vercel, protected: protectedPage, contentType: res.headers.get("content-type") ?? undefined });
+  } catch (e) {
+    return json({ ok: false, status: 0, ms: Date.now() - t0, error: (e as Error).name === "AbortError" ? "Timed out after 15 s" : (e as Error).message });
+  } finally { clearTimeout(timer); }
+}

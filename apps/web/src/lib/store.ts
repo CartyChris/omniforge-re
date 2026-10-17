@@ -4,6 +4,7 @@ import { createProject, exportProject as coreExport, importProject as coreImport
 import { db, ls } from "./storage";
 import { Bridge, isTauri, probe, tauriBridge, type BridgeConn } from "./bridge";
 import { debounce } from "./utils";
+import { appLog } from "./log";
 
 export interface ProjectIndexItem { id: string; name: string; updatedAt: string; stats: ReturnType<typeof projectStats>; localOnly: boolean }
 export interface LivePage { id: string; url: string; status: number; title: string; depth: number; via: string }
@@ -99,7 +100,10 @@ export const useApp = create<State>((set, get) => ({
   },
 
   patchSettings(p) {
-    const settings = { ...get().settings, ...p };
+    const prev = get().settings;
+    const settings = { ...prev, ...p };
+    // keep the last few configurations so "Restore previous settings" can undo a change (settings never contain secrets)
+    if (JSON.stringify(prev) !== JSON.stringify(settings)) ls.set("omniforge.settings.history", [prev, ...ls.get<Settings[]>("omniforge.settings.history", [])].slice(0, 8));
     ls.set("omniforge.settings", settings);
     if (p.theme) { document.documentElement.setAttribute("data-theme", p.theme); ls.setRaw("omniforge.theme", p.theme); }
     set({ settings });
@@ -139,7 +143,7 @@ export const useApp = create<State>((set, get) => ({
     return job;
   },
   patchJob(id, p) { set((s) => (s.jobs[id] ? { jobs: { ...s.jobs, [id]: { ...s.jobs[id]!, ...p } } } : s)); },
-  logJob(id, msg, level = "info") { set((s) => (s.jobs[id] ? { jobs: { ...s.jobs, [id]: { ...s.jobs[id]!, log: [...s.jobs[id]!.log.slice(-300), { t: new Date().toISOString(), level, msg }] } } } : s)); },
+  logJob(id, msg, level = "info") { if (level !== "info") appLog.push(level, `job:${get().jobs[id]?.kind ?? "?"}`, msg); set((s) => (s.jobs[id] ? { jobs: { ...s.jobs, [id]: { ...s.jobs[id]!, log: [...s.jobs[id]!.log.slice(-300), { t: new Date().toISOString(), level, msg }] } } } : s)); },
   cancelJob(id) { const j = get().jobs[id]; j?.abort?.abort(); get().patchJob(id, { status: "cancelled", endedAt: Date.now() }); },
   dismissJob(id) { set((s) => { const { [id]: _, ...rest } = s.jobs; return { jobs: rest }; }); },
 
@@ -153,7 +157,9 @@ export const useApp = create<State>((set, get) => ({
       const info = await bridge.get<BridgeInfo>("/bridge/info");
       if (c.kind === "session") ls.set("omniforge.bridge", c);
       set({ bridgeInfo: info, bridgeState: "connected" });
+      appLog.push("info", "bridge", `connected to ${c.url} (v${info.version})`);
     } catch (e) {
+      appLog.push("error", "bridge", `connection failed: ${(e as Error).message}`);
       set({ bridge: null, bridgeInfo: null, bridgeState: "lost" });
       if (c.kind === "session") ls.set("omniforge.bridge", null);
       throw e;

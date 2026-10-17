@@ -8,6 +8,7 @@ import { requestApproval } from "./approvals";
 export const GH_KEY = "token:github";
 export const VC_KEY = "token:vercel";
 const fetcher = () => smartFetch(() => useApp.getState().bridge);
+export const appFetch = () => fetcher();
 
 export async function ghToken(): Promise<string | undefined> { try { return await vault.get(GH_KEY); } catch { return undefined; } }
 export async function vcToken(): Promise<string | undefined> { try { return await vault.get(VC_KEY); } catch { return undefined; } }
