@@ -52,10 +52,10 @@ export const DropdownSep = () => <DropdownP.Separator className="my-1 h-px bg-li
 export const DropdownLabel = ({ children }: { children: React.ReactNode }) => <DropdownP.Label className="px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-wider text-faint">{children}</DropdownP.Label>;
 
 /* ---------------- Select ---------------- */
-export function Select({ value, onValueChange, options, placeholder, className, disabled }: { value?: string; onValueChange: (v: string) => void; options: { value: string; label: React.ReactNode; hint?: string; disabled?: boolean }[]; placeholder?: string; className?: string; disabled?: boolean }) {
+export function Select({ value, onValueChange, options, placeholder, className, disabled, label }: { /** accessible name when the select is not wrapped in a <label> */ label?: string; value?: string; onValueChange: (v: string) => void; options: { value: string; label: React.ReactNode; hint?: string; disabled?: boolean }[]; placeholder?: string; className?: string; disabled?: boolean }) {
   return (
     <SelectP.Root value={value} onValueChange={onValueChange} disabled={disabled}>
-      <SelectP.Trigger className={cn("inline-flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-line bg-bg px-3 text-sm text-fg transition hover:border-line-strong focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25 disabled:opacity-50 data-[placeholder]:text-faint", className)}>
+      <SelectP.Trigger aria-label={label} className={cn("inline-flex h-9 w-full items-center justify-between gap-2 rounded-lg border border-line bg-bg px-3 text-sm text-fg transition hover:border-line-strong focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25 disabled:opacity-50 data-[placeholder]:text-faint", className)}>
         <span className="truncate"><SelectP.Value placeholder={placeholder} /></span><SelectP.Icon><ChevronDown className="size-4 text-muted" /></SelectP.Icon>
       </SelectP.Trigger>
       <SelectP.Portal><SelectP.Content position="popper" sideOffset={6} className="z-[70] max-h-72 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-xl border border-line bg-elevated shadow-[var(--shadow-pop)] animate-in"><SelectP.Viewport className="p-1">

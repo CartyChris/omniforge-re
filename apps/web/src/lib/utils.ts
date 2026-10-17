@@ -22,4 +22,10 @@ export function download(name: string, data: Blob | Uint8Array | string, type = 
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-export function debounce<T extends (...a: any[]) => void>(fn: T, ms: number) { let t: ReturnType<typeof setTimeout>; const d = ((...a: any[]) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }) as T & { flush(): void }; d.flush = () => clearTimeout(t); return d; }
+/** Debounce with a working flush(): runs the pending call immediately (used before switching projects / closing the tab). */
+export function debounce<T extends (...a: any[]) => void>(fn: T, ms: number) {
+  let t: ReturnType<typeof setTimeout> | undefined; let pending: Parameters<T> | null = null;
+  const d = ((...a: Parameters<T>) => { pending = a; clearTimeout(t); t = setTimeout(() => { const p = pending; pending = null; if (p) fn(...p); }, ms); }) as T & { flush(): void };
+  d.flush = () => { clearTimeout(t); const p = pending; pending = null; if (p) fn(...p); };
+  return d;
+}

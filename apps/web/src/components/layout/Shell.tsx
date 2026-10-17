@@ -192,7 +192,7 @@ export function Shell() {
           <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2">
             {NAV.filter((n) => n.id !== "settings").map((n) => (
               <Tip key={n.id} label={<span>{n.label}<span className="ml-2 text-faint">g {n.chord}</span></span>} side="right">
-                <RailLink to={n.to} end={n.to === "/"}>
+                <RailLink to={n.to} end={n.to === "/"} aria-label={n.label}>
                   <n.icon className="size-[18px] shrink-0" />{expanded && <span className="truncate">{n.label}</span>}
                 </RailLink>
               </Tip>
@@ -200,7 +200,7 @@ export function Shell() {
           </nav>
           <div className="space-y-0.5 border-t border-line p-2">
             {NAV.filter((n) => n.id === "settings").map((n) => (
-              <Tip key={n.id} label={n.label} side="right"><RailLink to={n.to}><n.icon className="size-[18px] shrink-0" />{expanded && n.label}</RailLink></Tip>
+              <Tip key={n.id} label={n.label} side="right"><RailLink to={n.to} aria-label={n.label}><n.icon className="size-[18px] shrink-0" />{expanded && n.label}</RailLink></Tip>
             ))}
             <Tip label={settings.theme === "dark" ? "Light theme" : "Dark theme"} side="right"><button onClick={() => patchSettings({ theme: settings.theme === "dark" ? "light" : "dark" })} className="flex h-10 w-full items-center gap-3 rounded-lg px-[11px] text-[13px] font-medium text-muted transition hover:bg-overlay hover:text-fg" aria-label="Toggle theme">{settings.theme === "dark" ? <Sun className="size-[18px]" /> : <Moon className="size-[18px]" />}{expanded && "Theme"}</button></Tip>
             <Tip label={expanded ? "Collapse" : "Expand"} side="right"><button onClick={() => patchSettings({ sidebarExpanded: !expanded })} className="flex h-10 w-full items-center gap-3 rounded-lg px-[11px] text-[13px] font-medium text-muted transition hover:bg-overlay hover:text-fg" aria-label="Toggle sidebar"><PanelLeft className="size-[18px]" />{expanded && "Collapse"}</button></Tip>

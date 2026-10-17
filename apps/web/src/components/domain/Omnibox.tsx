@@ -52,7 +52,7 @@ export function Omnibox({ autoFocus, compact, onStarted }: { autoFocus?: boolean
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }}
           placeholder="Paste a website or GitHub repo URL…"
           className="h-10 min-h-10 flex-1 resize-none bg-transparent py-2.5 text-[15px] leading-5 outline-none placeholder:text-faint" style={{ height: text.includes("\n") ? Math.min(160, 24 * (text.split("\n").length + 1)) : undefined }} />
-        <Button variant="primary" size="lg" className="shrink-0" onClick={submit} disabled={d.kind === "empty"} icon={<ArrowRight className="size-4" />}><span className="hidden sm:inline">{d.kind === "repo" ? "Rip" : "Analyze"}</span></Button>
+        <Button variant="primary" size="lg" className="shrink-0" aria-label={d.kind === "repo" ? "Rip" : "Analyze"} onClick={submit} disabled={d.kind === "empty"} icon={<ArrowRight className="size-4" />}><span className="hidden sm:inline">{d.kind === "repo" ? "Rip" : "Analyze"}</span></Button>
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2 px-1 pb-0.5">
         {d.kind !== "empty" && <>{d.websites.length > 0 && <Badge tone="info">{d.websites.length} website{d.websites.length > 1 ? "s" : ""}</Badge>}{d.repos.length > 0 && <Badge tone="teal">{d.repos.length} repo{d.repos.length > 1 ? "s" : ""}</Badge>}{d.invalid.length > 0 && <Badge tone="warn">{d.invalid.length} unrecognised</Badge>}{d.kind === "mixed" && <span className="text-[11px] text-warn">Repos open in Repo Rip first; run websites separately.</span>}</>}

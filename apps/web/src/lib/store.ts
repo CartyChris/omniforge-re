@@ -176,6 +176,8 @@ export const useApp = create<State>((set, get) => ({
   },
 }));
 
+if (typeof window !== "undefined") { const flush = () => persistProject.flush(); window.addEventListener("pagehide", flush); document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flush(); }); }
+
 export const useBridge = () => useApp((s) => s.bridge);
 export const isDesktop = isTauri;
 export { DEFAULT_CRAWL };

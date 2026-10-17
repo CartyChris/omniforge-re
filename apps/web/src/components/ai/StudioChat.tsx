@@ -40,8 +40,8 @@ export function ChatPanel() {
   return (
     <Card className="flex h-[70dvh] min-h-[30rem] flex-col">
       <div className="flex flex-wrap items-center gap-3 border-b border-line p-3">
-        <div className="w-full min-w-48 flex-1 sm:w-auto"><Select value={modelId} onValueChange={setModelId} options={usable.map((m) => ({ value: modelKey(m), label: m.name ?? m.id, hint: m.local ? "local" : m.provider.replace(/^cli:/, "") }))} /></div>
-        <div className="w-44"><Select value={role} onValueChange={(v) => setRole(v as AgentRole | "general")} options={[{ value: "general", label: "General assistant" }, ...Object.entries(ROLES).map(([k, r]) => ({ value: k, label: r.label }))]} /></div>
+        <div className="w-full min-w-48 flex-1 sm:w-auto"><Select label="Model" value={modelId} onValueChange={setModelId} options={usable.map((m) => ({ value: modelKey(m), label: m.name ?? m.id, hint: m.local ? "local" : m.provider.replace(/^cli:/, "") }))} /></div>
+        <div className="w-44"><Select label="Agent role" value={role} onValueChange={(v) => setRole(v as AgentRole | "general")} options={[{ value: "general", label: "General assistant" }, ...Object.entries(ROLES).map(([k, r]) => ({ value: k, label: r.label }))]} /></div>
         <label className="flex items-center gap-1.5 text-xs text-muted"><input type="checkbox" checked={withFiles} onChange={(e) => setWithFiles(e.target.checked)} />project file list</label>
         <Button size="icon-sm" variant="ghost" aria-label="Clear conversation" title="Clear conversation" disabled={!msgs.length} onClick={() => mutate((p) => ({ ...p, conversations: p.conversations.filter((c) => c.id !== CONV) }))}><Eraser className="size-4" /></Button>
       </div>

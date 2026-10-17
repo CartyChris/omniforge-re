@@ -69,7 +69,7 @@ export function Segmented<T extends string>({ value, onChange, options, classNam
 }
 export function CopyButton({ text, label = "Copy", className }: { text: string; label?: string; className?: string }) {
   const [done, setDone] = React.useState(false);
-  return <Button size="xs" variant="ghost" className={className} icon={done ? <Check className="size-3.5 text-ok" /> : <Copy className="size-3.5" />} onClick={async () => { try { await navigator.clipboard.writeText(text); setDone(true); setTimeout(() => setDone(false), 1400); } catch { /* clipboard blocked */ } }}>{done ? "Copied" : label}</Button>;
+  return <Button size="xs" variant="ghost" className={className} aria-label={label || "Copy"} icon={done ? <Check className="size-3.5 text-ok" /> : <Copy className="size-3.5" />} onClick={async () => { try { await navigator.clipboard.writeText(text); setDone(true); setTimeout(() => setDone(false), 1400); } catch { /* clipboard blocked */ } }}>{done ? "Copied" : label}</Button>;
 }
 export function SectionTitle({ title, sub, right, className }: { title: string; sub?: React.ReactNode; right?: React.ReactNode; className?: string }) {
   return <div className={cn("flex flex-wrap items-end justify-between gap-3", className)}><div className="min-w-0"><h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>{sub && <p className="mt-1 max-w-2xl text-sm text-muted">{sub}</p>}</div>{right && <div className="flex items-center gap-2">{right}</div>}</div>;

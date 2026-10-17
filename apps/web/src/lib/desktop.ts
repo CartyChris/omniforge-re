@@ -9,5 +9,5 @@ export async function initDesktop(navigate: (to: string) => void) {
   const un2 = await listen<string>("menu:action", (e) => {
     if (e.payload === "export-project") { const bytes = useApp.getState().exportActive(); if (bytes) { import("./utils").then(({ download }) => download(`${useApp.getState().project?.name ?? "project"}.omniforge.zip`, bytes, "application/zip")); } }
   });
-  return () => { un1(); un2(); };
+  return () => { for (const u of [un1, un2]) { try { u(); } catch { /* shell already gone */ } } };
 }

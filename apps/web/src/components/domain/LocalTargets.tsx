@@ -49,7 +49,7 @@ export function LocalTargets() {
       <CardBody className="space-y-5">
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="min-w-48 flex-1"><Select value={root} onValueChange={setRoot} options={roots.map((r) => ({ value: r.id, label: r.label, hint: r.writable ? "read/write" : "read-only" }))} placeholder={roots.length ? "Choose an approved folder" : "No folders approved yet"} /></div>
+            <div className="min-w-48 flex-1"><Select label="Approved folder" value={root} onValueChange={setRoot} options={roots.map((r) => ({ value: r.id, label: r.label, hint: r.writable ? "read/write" : "read-only" }))} placeholder={roots.length ? "Choose an approved folder" : "No folders approved yet"} /></div>
             {canApprove && <Button variant="secondary" icon={<FolderPlus className="size-4" />} onClick={pick}>{isDesktop() ? "Choose folder…" : "Approve"}</Button>}
             {selected && canApprove && <Button variant="ghost" size="icon" aria-label="Remove approval" title="Remove approval" onClick={async () => { await removeRoot(selected.id); await refresh(); }}><Trash2 className="size-4" /></Button>}
           </div>
@@ -72,7 +72,7 @@ export function LocalTargets() {
               <Button variant="secondary" disabled={!selected || !pkg} icon={<Microscope className="size-4" />} onClick={async () => { const r = await inspectLocalPackage(selected!.id, pkg, pkg.split("/").pop() || pkg); nav(`/analyze?job=${r.jobId}`); }}>Inspect</Button>
             </div>
             <div className="flex flex-wrap items-center gap-2 border-t border-line pt-2">
-              <div className="min-w-44 flex-1"><Select value={op} onValueChange={setOp} options={(ops.length ? ops : [{ id: "inspect-artifact", label: "Package / resource inventory", kind: "static" as const, accepts: "" }]).map((o) => ({ value: o.id, label: o.label, hint: o.kind === "native-provider" ? "launches tool" : undefined }))} /></div>
+              <div className="min-w-44 flex-1"><Select label="REA operation" value={op} onValueChange={setOp} options={(ops.length ? ops : [{ id: "inspect-artifact", label: "Package / resource inventory", kind: "static" as const, accepts: "" }]).map((o) => ({ value: o.id, label: o.label, hint: o.kind === "native-provider" ? "launches tool" : undefined }))} /></div>
               <Button variant="soft" disabled={!selected || !pkg || !reaOk} title={reaOk ? "Run REA (reverse-engineering agent)" : "REA isn't installed — set it up in Integrations"} onClick={async () => { const o = ops.find((x) => x.id === op); if (!o) return; if (o.kind === "native-provider" && !window.confirm(`${o.label} launches a native analysis tool (Hopper/Ghidra/IDA) on your machine. Continue?`)) return; const id = await runRea(selected!.id, pkg, o, pkg.split("/").pop() || pkg, o.kind === "native-provider"); nav(`/analyze?job=${id}`); }}>Run REA</Button>
             </div>
             {!reaOk && <p className="text-xs text-warn">REA isn't installed. <button className="underline" onClick={() => nav("/integrations")}>Install it</button> (you approve every step).</p>}
