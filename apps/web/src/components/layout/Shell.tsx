@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { forwardRef, useEffect, useMemo, useState, type ComponentProps } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 import { Command } from "cmdk";
 import { toast } from "sonner";
@@ -152,6 +152,12 @@ function ApprovalDialog() {
 }
 
 /* ----------------------------- shell ----------------------------- */
+/** NavLink wrapper that takes a plain className: Radix `asChild` (tooltips) merges className as a string, which breaks NavLink's function form. */
+const RailLink = forwardRef<HTMLAnchorElement, ComponentProps<typeof NavLink>>(({ className: _c, ...p }, ref) => (
+  <NavLink ref={ref} {...p} className={({ isActive }) => cn("group flex h-10 items-center gap-3 rounded-lg px-[11px] text-[13px] font-medium transition", isActive ? "bg-accent-soft text-accent" : "text-muted hover:bg-overlay hover:text-fg")} />
+));
+RailLink.displayName = "RailLink";
+
 export function Shell() {
   const { settings, patchSettings, ready } = useApp();
   const [palette, setPalette] = useState(false);
@@ -186,15 +192,15 @@ export function Shell() {
           <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2">
             {NAV.filter((n) => n.id !== "settings").map((n) => (
               <Tip key={n.id} label={<span>{n.label}<span className="ml-2 text-faint">g {n.chord}</span></span>} side="right">
-                <NavLink to={n.to} end={n.to === "/"} className={({ isActive }) => cn("group flex h-10 items-center gap-3 rounded-lg px-[11px] text-[13px] font-medium transition", isActive ? "bg-accent-soft text-accent" : "text-muted hover:bg-overlay hover:text-fg")}>
+                <RailLink to={n.to} end={n.to === "/"}>
                   <n.icon className="size-[18px] shrink-0" />{expanded && <span className="truncate">{n.label}</span>}
-                </NavLink>
+                </RailLink>
               </Tip>
             ))}
           </nav>
           <div className="space-y-0.5 border-t border-line p-2">
             {NAV.filter((n) => n.id === "settings").map((n) => (
-              <Tip key={n.id} label={n.label} side="right"><NavLink to={n.to} className={({ isActive }) => cn("flex h-10 items-center gap-3 rounded-lg px-[11px] text-[13px] font-medium transition", isActive ? "bg-accent-soft text-accent" : "text-muted hover:bg-overlay hover:text-fg")}><n.icon className="size-[18px] shrink-0" />{expanded && n.label}</NavLink></Tip>
+              <Tip key={n.id} label={n.label} side="right"><RailLink to={n.to}><n.icon className="size-[18px] shrink-0" />{expanded && n.label}</RailLink></Tip>
             ))}
             <Tip label={settings.theme === "dark" ? "Light theme" : "Dark theme"} side="right"><button onClick={() => patchSettings({ theme: settings.theme === "dark" ? "light" : "dark" })} className="flex h-10 w-full items-center gap-3 rounded-lg px-[11px] text-[13px] font-medium text-muted transition hover:bg-overlay hover:text-fg" aria-label="Toggle theme">{settings.theme === "dark" ? <Sun className="size-[18px]" /> : <Moon className="size-[18px]" />}{expanded && "Theme"}</button></Tip>
             <Tip label={expanded ? "Collapse" : "Expand"} side="right"><button onClick={() => patchSettings({ sidebarExpanded: !expanded })} className="flex h-10 w-full items-center gap-3 rounded-lg px-[11px] text-[13px] font-medium text-muted transition hover:bg-overlay hover:text-fg" aria-label="Toggle sidebar"><PanelLeft className="size-[18px]" />{expanded && "Collapse"}</button></Tip>

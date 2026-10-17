@@ -162,11 +162,15 @@ function mdToHtml(md: string): string {
   const lines = md.split("\n");
   const out: string[] = [];
   let i = 0;
-  const inline = (s: string) =>
-    htmlEsc(s.replace(/\\([\\`*_{}[\]<>|])/g, "$1"))
-      .replace(/`([^`]+)`/g, "<code>$1</code>")
+  // code spans are lifted out first so underscores inside them (ids like inv_abc) can't break emphasis matching
+  const inline = (s: string) => {
+    const codes: string[] = [];
+    return htmlEsc(s.replace(/\u0000/g, "").replace(/\\([\\`*_{}[\]<>|])/g, "$1"))
+      .replace(/`([^`]+)`/g, (_m, c: string) => `\u0000${codes.push(c) - 1}\u0000`)
       .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-      .replace(/(?<![*\w])_([^_]+)_(?!\w)/g, "<em>$1</em>");
+      .replace(/(?<![*\w])_([^_]+)_(?!\w)/g, "<em>$1</em>")
+      .replace(/\u0000(\d+)\u0000/g, (_m, n: string) => `<code>${codes[Number(n)]}</code>`);
+  };
   while (i < lines.length) {
     const l = lines[i]!;
     if (l.startsWith("```")) {
