@@ -13,7 +13,7 @@ import { stackById } from "../ai/plans.js";
 import { untrusted } from "../ai/untrusted.js";
 import type { AgentTask } from "../schema.js";
 import { now } from "../util/index.js";
-import { assessRip, detectLicense, effective, type Assessment, type LicenseInfo } from "./license.js";
+import { assertCanRip, assessRip, detectLicense, effective, type Assessment, type LicenseInfo } from "./license.js";
 import type { RepoRef } from "./ref.js";
 
 export interface RepoSnapshot {
@@ -126,7 +126,8 @@ export function licenseFilesOf(s: RepoSnapshot): { path: string; data: Uint8Arra
 export interface ClonePackage { files: Map<string, Uint8Array>; textFiles: Record<string, string>; binaries: { path: string; bytes: number }[]; assessment: Assessment; notes: string[] }
 
 /** The literal copy: every file byte-for-byte + attribution. `textFiles` is what the in-app workspace/editor can hold. */
-export function buildClonePackage(snap: RepoSnapshot, assessment: Assessment, o: { prefix?: string } = {}): ClonePackage {
+export function buildClonePackage(snap: RepoSnapshot, assessment: Assessment, o: { prefix?: string; attested?: boolean } = {}): ClonePackage {
+  assertCanRip(assessment, !!o.attested); // rights checkpoint: unlicensed/proprietary code needs an explicit attestation
   const prefix = o.prefix ? o.prefix.replace(/\/?$/, "/") : "";
   const files = new Map<string, Uint8Array>();
   const textFiles: Record<string, string> = {};
@@ -153,7 +154,7 @@ export function zipPackage(files: Map<string, Uint8Array>): Uint8Array {
 
 /* ---------------- mesh (side-by-side monorepo) ---------------- */
 
-export interface MeshOptions { name?: string; layout?: "packages" | "apps"; assignPorts?: boolean; basePort?: number }
+export interface MeshOptions { name?: string; layout?: "packages" | "apps"; assignPorts?: boolean; basePort?: number; attested?: boolean }
 export interface DepConflict { name: string; ranges: { repo: string; range: string }[]; compatible: boolean; suggestion: string }
 export interface MeshReport {
   packages: { slug: string; dir: string; repo: string; buildSystems: string[]; frameworks: string[]; scripts: string[]; ecosystem: string }[];
@@ -181,6 +182,7 @@ function readJson(s: RepoSnapshot, path: string): any | null {
 const DEFAULT_PORT: [RegExp, number][] = [[/\bnext\b/, 3000], [/\bvite\b/, 5173], [/react-scripts/, 3000], [/\bnuxt\b/, 3000], [/\bastro\b/, 4321], [/\bsvelte-kit|vite dev/, 5173], [/\bremix\b/, 3000], [/webpack(?:-dev-server| serve)/, 8080], [/\bng serve\b/, 4200]];
 
 export function meshRepos(snaps: RepoSnapshot[], assessment: Assessment, o: MeshOptions = {}): { files: Map<string, Uint8Array>; report: MeshReport } {
+  assertCanRip(assessment, !!o.attested);
   const dir = o.layout ?? "packages";
   const name = (o.name ?? "mesh").toLowerCase().replace(/[^a-z0-9-]/g, "-") || "mesh";
   const files = new Map<string, Uint8Array>();

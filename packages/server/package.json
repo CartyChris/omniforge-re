@@ -1,0 +1,27 @@
+{
+  "name": "@omniforge/server",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts",
+    "./bridge": "./src/bridge/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "bridge": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@omniforge/core": "workspace:*",
+    "playwright-core": "^1.55.0",
+    "undici": "^7.16.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "fflate": "^0.8.3",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

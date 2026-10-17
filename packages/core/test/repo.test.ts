@@ -158,7 +158,7 @@ describe("exact clone", () => {
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 255, 128]);
     const s = await analyzeSnapshot(await snapshotFromFiles(ref("o/r"), [...files({ LICENSE: MIT, "src/a.ts": "export const a = 'ü';\n", "node_modules/x.js": "n" }), { path: "logo.png", data: png }], { method: "upload", sha: "deadbee" }));
     const a = assessRip([{ repo: "o/r", licenses: s.licenses }], "clone");
-    const pkg = buildClonePackage(s, a, { prefix: "copy" });
+    const pkg = buildClonePackage(s, a, { prefix: "copy" }); // permissive licence: no attestation needed
     expect(pkg.files.get("copy/logo.png")).toEqual(png);
     expect(strFromU8(pkg.files.get("copy/src/a.ts")!)).toBe("export const a = 'ü';\n");
     expect(pkg.files.has("copy/node_modules/x.js")).toBe(false);
@@ -167,6 +167,17 @@ describe("exact clone", () => {
     expect(pkg.textFiles["copy/ATTRIBUTION.md"]).toMatch(/deadbee/);
     const zip = unzipSync(zipPackage(pkg.files));
     expect(Object.keys(zip).sort()).toEqual(["copy/ATTRIBUTION.md", "copy/LICENSE", "copy/logo.png", "copy/src/a.ts"]);
+  });
+});
+
+describe("rights checkpoint is enforced by the packaging functions", () => {
+  it("refuses to clone or mesh unlicensed code without attestation, and allows it with one", async () => {
+    const s = await snap("o/nolic", { "README.md": "x", "a.js": "1" });
+    const a = assessRip([{ repo: "o/nolic", licenses: s.licenses }], "clone");
+    expect(() => buildClonePackage(s, a)).toThrow(/no usable open-source licence/);
+    expect(() => meshRepos([s], a)).toThrow(/no usable open-source licence/);
+    expect(buildClonePackage(s, a, { attested: true }).files.has("a.js")).toBe(true);
+    expect(meshRepos([s], a, { attested: true }).files.has("packages/nolic/a.js")).toBe(true);
   });
 });
 
