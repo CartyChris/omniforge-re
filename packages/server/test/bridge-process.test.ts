@@ -103,6 +103,19 @@ describe("git", () => {
   it("refuses non-https, private and credentialed URLs before running git", async () => {
     for (const u of ["file:///etc", "ssh://git@github.com/a/b", "http://localhost/a.git", "https://user:pw@github.com/a/b.git", "https://169.254.169.254/x.git", "git://github.com/a/b"]) await expect(cloneRepo(u), u).rejects.toThrow();
   });
+  it("'commit all' never commits credential-style files (.env, keys, .npmrc) and says what it left out", async () => {
+    const dir = fs.mkdtempSync(path.join(tmp, "sec-"));
+    await gitInit(dir);
+    fs.mkdirSync(path.join(dir, "sub")); fs.writeFileSync(path.join(dir, "a.ts"), "export {}\n"); fs.writeFileSync(path.join(dir, ".env"), "TOKEN=hunter2-value\n"); fs.writeFileSync(path.join(dir, "sub/id_rsa"), "PRIVATE"); fs.writeFileSync(path.join(dir, ".env.example"), "TOKEN=\n");
+    const c = await gitCommitAll(dir, "init");
+    expect(c.ok).toBe(true);
+    expect(c.ok && c.excluded.sort()).toEqual([".env", "sub/id_rsa"]);
+    const tracked = execSync("git ls-tree -r --name-only HEAD", { cwd: dir, encoding: "utf8" }).split("\n").filter(Boolean).sort();
+    expect(tracked).toEqual([".env.example", "a.ts"]); // example files are fine; real secrets are not
+    expect(await gitStatus(dir)).toMatchObject({ isRepo: true, changes: [{ status: "??", path: ".env" }, { status: "??", path: "sub/id_rsa" }] });
+    const only = fs.mkdtempSync(path.join(tmp, "sec2-")); await gitInit(only); fs.writeFileSync(path.join(only, ".env"), "X=1");
+    expect(await gitCommitAll(only, "x")).toMatchObject({ ok: false, message: expect.stringMatching(/left out because they look like secrets/) });
+  });
   it("status / diff / commit / log / branch on a working tree", async () => {
     const dir = fs.mkdtempSync(path.join(tmp, "wt-"));
     expect(await gitInit(dir)).toBe(true);

@@ -13,7 +13,7 @@ export class FsError extends Error { constructor(public status: number, m: strin
 export interface Root { id: string; path: string; label: string; writable: boolean }
 
 const IGNORE = new Set(["node_modules", ".git", ".next", ".nuxt", ".svelte-kit", ".turbo", ".vercel", "dist", "build", "out", "target", "__pycache__", ".venv", "venv", ".gradle", ".idea", "coverage", "Pods", "DerivedData", ".DS_Store"]);
-const SECRET_FILE = /(?:^|\/)(?:\.env(?:\.(?!example$|sample$|template$)[\w.-]+)?|id_rsa|id_ed25519|.*\.pem|.*\.p12|.*\.keystore|credentials\.json|\.npmrc|\.netrc)$/i;
+export const SECRET_FILE = /(?:^|\/)(?:\.env(?:\.(?!example$|sample$|template$)[\w.-]+)?|id_rsa|id_ed25519|.*\.pem|.*\.p12|.*\.keystore|credentials\.json|\.npmrc|\.netrc)$/i;
 
 export class Roots {
   private roots = new Map<string, Root>();

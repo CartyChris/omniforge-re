@@ -45,8 +45,9 @@ export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttribute
 Input.displayName = "Input";
 export const Textarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement>>(({ className, ...p }, ref) => <textarea ref={ref} className={cn(field, "min-h-20 py-2 leading-relaxed", className)} {...p} />);
 Textarea.displayName = "Textarea";
-export function Field({ label, hint, children, className }: { label: string; hint?: React.ReactNode; children: React.ReactNode; className?: string }) {
-  return <label className={cn("block space-y-1.5", className)}><span className="text-xs font-medium text-muted">{label}</span>{children}{hint && <span className="block text-[11px] text-faint">{hint}</span>}</label>;
+export function Field({ label, hint, children, className, group }: { label: string; hint?: React.ReactNode; children: React.ReactNode; className?: string; /** the child is a group of controls (e.g. a segmented picker): label it as a group instead of wrapping it in a <label> */ group?: boolean }) {
+  const body = <><span className="text-xs font-medium text-muted">{label}</span>{children}{hint && <span className="block text-[11px] text-faint">{hint}</span>}</>;
+  return group ? <div role="group" aria-label={label} className={cn("block space-y-1.5", className)}>{body}</div> : <label className={cn("block space-y-1.5", className)}>{body}</label>;
 }
 
 /* ---------------- misc ---------------- */

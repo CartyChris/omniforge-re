@@ -5,14 +5,14 @@ import { useApp, isDesktop } from "@/lib/store";
 import { analyzeLocalFolder, inspectLocalPackage } from "@/lib/analyze";
 import { addRoot, listRoots, listTree, pickFolderNative, removeRoot, runRea, type ReaOpInfo, type RootInfo } from "@/lib/local";
 import { Badge, Button, Card, CardBody, CardHeader, CardTitle, Input } from "@/components/ui/primitives";
-import { Select } from "@/components/ui/overlay";
+import { Select, Switch } from "@/components/ui/overlay";
 import { useNavigate } from "react-router";
 
 const PKG = /\.(app|asar|apk|ipa|jar|war|aar|dmg|pkg|exe|dll|msi|deb|rpm|appimage|wasm|so|dylib|node|zip|tar|tgz|gz)$/i;
 
 /** Desktop-only analysis: local folders, installed apps/packages/binaries, and REA deep analysis. Honest disabled state on the web. */
 export function LocalTargets() {
-  const { bridge, bridgeState, bridgeInfo } = useApp();
+  const { bridge, bridgeState, bridgeInfo, refreshBridge } = useApp();
   const nav = useNavigate();
   const connected = bridgeState === "connected" && !!bridge;
   const canApprove = bridge?.conn.kind === "ui";
@@ -53,6 +53,7 @@ export function LocalTargets() {
             {canApprove && <Button variant="secondary" icon={<FolderPlus className="size-4" />} onClick={pick}>{isDesktop() ? "Choose folder…" : "Approve"}</Button>}
             {selected && canApprove && <Button variant="ghost" size="icon" aria-label="Remove approval" title="Remove approval" onClick={async () => { await removeRoot(selected.id); await refresh(); }}><Trash2 className="size-4" /></Button>}
           </div>
+          {canApprove && selected && <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-line px-3 py-2 text-[13px]"><span><span className="font-medium">Let OmniForge write to this folder</span><span className="block text-xs text-muted">Needed for the editor, AI builds and git commits. Off = read-only analysis. You can turn it off any time.</span></span><Switch checked={selected.writable} aria-label="Allow writing to this folder" onCheckedChange={async (v) => { const path = bridgeInfo?.roots.find((r) => r.id === selected.id)?.path; if (!path) return toast.error("Reconnect the desktop app to change this."); try { const r = await addRoot(path, { writable: v, label: selected.label }); await refresh(); setRoot(r.id); await refreshBridge(); toast.success(v ? "Folder is now writable" : "Folder is read-only again"); } catch (e) { toast.error((e as Error).message); } }} /></label>}
           {canApprove && !isDesktop() && <div className="flex gap-2"><Input value={pathInput} onChange={(e) => setPathInput(e.target.value)} placeholder="/Users/you/Projects/my-app" aria-label="Folder path to approve" onKeyDown={(e) => { if (e.key === "Enter" && pathInput.trim()) void approve(pathInput.trim()); }} /><Button disabled={!pathInput.trim()} onClick={() => approve(pathInput.trim())}>Approve path</Button></div>}
           {!canApprove && <p className="text-xs text-muted">Folders are approved inside the desktop app (this paired session can only use folders already approved there).</p>}
           <p className="text-xs text-faint">OmniForge can only read folders you approve. Symlinks that escape them are blocked and <code>.env</code> values are masked.</p>

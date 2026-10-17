@@ -2,6 +2,7 @@
  * Locked-down git: clone public/token-authenticated repos safely and run
  * status/diff/commit inside approved roots.
  */
+import { SECRET_FILE } from "./fsx.js";
 import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -106,7 +107,8 @@ export async function gitStatus(dir: string) {
   if (!isRepo) return { isRepo: false as const };
   const branch = (await run(["rev-parse", "--abbrev-ref", "HEAD"], { cwd: dir, timeoutMs: 10_000 })).stdout.trim();
   const st = (await run(["status", "--porcelain=v1", "-z", "--untracked-files=all"], { cwd: dir, timeoutMs: 20_000 })).stdout;
-  const changes = st.split("\0").filter(Boolean).map((l) => ({ status: l.slice(0, 2).trim() || "?", path: l.slice(3) }));
+  const toks = st.split("\0").filter(Boolean); const changes: { status: string; path: string }[] = [];
+  for (let i = 0; i < toks.length; i++) { const l = toks[i]!; const code = l.slice(0, 2); changes.push({ status: code.trim() || "?", path: l.slice(3) }); if (code[0] === "R" || code[0] === "C") i++; } // renames carry the old path as an extra token
   return { isRepo: true as const, branch, changes };
 }
 export async function gitDiff(dir: string, file?: string) {
@@ -115,11 +117,16 @@ export async function gitDiff(dir: string, file?: string) {
 }
 export async function gitInit(dir: string) { return (await run(["init", "-b", "main"], { cwd: dir, timeoutMs: 10_000 })).code === 0; }
 export async function gitCommitAll(dir: string, message: string, author = { name: "OmniForge RE", email: "omniforge@localhost" }) {
-  await run(["add", "-A"], { cwd: dir, timeoutMs: 60_000 });
+  // Never stage credential-style files (.env, keys, .npmrc …): a one-click "commit all" must not be able to leak secrets into history.
+  const st = await gitStatus(dir);
+  const all = st.isRepo ? st.changes.map((c) => c.path) : [];
+  const excluded = all.filter((p) => SECRET_FILE.test(p));
+  const paths = all.filter((p) => !SECRET_FILE.test(p));
+  for (let i = 0; i < paths.length; i += 200) await run(["add", "-A", "--", ...paths.slice(i, i + 200)], { cwd: dir, timeoutMs: 60_000 });
   const r = await run(["-c", `user.name=${author.name}`, "-c", `user.email=${author.email}`, "-c", "commit.gpgsign=false", "commit", "-m", message], { cwd: dir, timeoutMs: 60_000 });
-  if (r.code !== 0 && /nothing to commit/.test(r.stdout + r.stderr)) return { ok: false as const, message: "Nothing to commit" };
+  if (r.code !== 0 && /nothing to commit|nothing added to commit/.test(r.stdout + r.stderr)) return { ok: false as const, message: excluded.length ? `Nothing to commit (${excluded.join(", ")} left out because they look like secrets)` : "Nothing to commit" };
   if (r.code !== 0) return { ok: false as const, message: (r.stderr || r.stdout).trim().slice(0, 300) };
-  return { ok: true as const, sha: (await run(["rev-parse", "HEAD"], { cwd: dir, timeoutMs: 10_000 })).stdout.trim() };
+  return { ok: true as const, sha: (await run(["rev-parse", "HEAD"], { cwd: dir, timeoutMs: 10_000 })).stdout.trim(), excluded };
 }
 export async function gitLog(dir: string, n = 20) {
   const r = await run(["log", `-n${n}`, "--pretty=format:%H%x1f%an%x1f%ad%x1f%s", "--date=iso-strict"], { cwd: dir, timeoutMs: 20_000 });

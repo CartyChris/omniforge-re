@@ -20,7 +20,7 @@ export function CrawlSettings({ hostedCaps }: { hostedCaps: boolean }) {
   return (
     <div className="grid gap-x-8 gap-y-5 md:grid-cols-2">
       <div className="space-y-5">
-        <Field label="Scope"><Segmented value={c.mode ?? "domain"} onChange={(mode) => set({ mode })} options={MODES} size="sm" className="flex-wrap" /></Field>
+        <Field label="Scope" group><Segmented value={c.mode ?? "domain"} onChange={(mode) => set({ mode })} options={MODES} size="sm" className="flex-wrap" /></Field>
         <Field label={`Depth: ${c.maxDepth ?? 3} link${(c.maxDepth ?? 3) === 1 ? "" : "s"} from the start page`}><Slider min={0} max={8} step={1} value={[c.maxDepth ?? 3]} onValueChange={([v]) => set({ maxDepth: v })} aria-label="Crawl depth" /></Field>
         <Field label={`Page limit: ${Math.min(c.maxPages ?? 40, maxPagesCap)}`} hint={hostedCaps && !desktop ? "The hosted service caps crawls at 60 pages. The desktop app allows up to 500." : undefined}><Slider min={1} max={maxPagesCap} step={1} value={[Math.min(c.maxPages ?? 40, maxPagesCap)]} onValueChange={([v]) => set({ maxPages: v })} aria-label="Page limit" /></Field>
         <div className="grid grid-cols-2 gap-3">

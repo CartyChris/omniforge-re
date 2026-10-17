@@ -92,7 +92,7 @@ export function BuildPanel() {
           {stackId === "any" && kind === "dev" && <Field label="Describe the target stack"><Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Flutter + Firebase" /></Field>}
 
           <div className="grid gap-4 border-t border-line pt-4 md:grid-cols-2">
-            <Field label="Where should the code go?"><Segmented size="sm" value={where} onChange={(w) => { setWhere(w); setTasks([]); }} options={[{ value: "browser", label: "This project (in browser)" }, { value: "local", label: "A folder on my Mac" }]} /></Field>
+            <Field label="Where should the code go?" group><Segmented size="sm" value={where} onChange={(w) => { setWhere(w); setTasks([]); }} options={[{ value: "browser", label: "This project (in browser)" }, { value: "local", label: "A folder on my Mac" }]} /></Field>
             {where === "browser" ? <label className="flex items-center gap-2 self-end pb-2 text-[13px]"><input type="checkbox" checked={fresh} onChange={(e) => setFresh(e.target.checked)} />Create a new project for the result</label>
               : desktop ? <Field label="Folder (approved, writable)">{roots.length ? <Select value={rootId} onValueChange={setRootId} options={roots.map((r) => ({ value: r.id, label: r.label }))} /> : <p className="text-xs text-warn">Approve a writable folder first (Analyze → On this computer).</p>}</Field>
               : <p className="self-end pb-2 text-xs text-warn">Writing to a local folder and running tests needs the desktop app.</p>}
