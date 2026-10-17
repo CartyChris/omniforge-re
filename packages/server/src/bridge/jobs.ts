@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { redactSecrets } from "@omniforge/core";
+import { UserError } from "../http.js";
 
 export type JobState = "running" | "done" | "failed" | "cancelled" | "timeout" | "interrupted";
 export interface JobLine { seq: number; stream: "stdout" | "stderr" | "system"; text: string; t: number }
@@ -58,7 +59,7 @@ export class JobManager {
   get(id: string) { return this.jobs.get(id); }
 
   start(o: StartOptions): JobMeta {
-    if (this.running() >= this.max) throw new Error(`Too many running jobs (limit ${this.max}). Wait for one to finish or cancel it.`);
+    if (this.running() >= this.max) throw new UserError(`Too many running jobs (limit ${this.max}). Wait for one to finish or cancel it.`);
     const id = randomBytes(6).toString("hex");
     const command = o.shell ? o.cmd : [o.cmd, ...(o.args ?? [])].join(" ");
     const meta: JobMeta = { id, kind: o.kind, label: o.label ?? command.slice(0, 80), command: redactSecrets(command).text, cwd: o.cwd, state: "running", startedAt: Date.now(), lines: 0 };

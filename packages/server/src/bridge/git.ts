@@ -8,6 +8,7 @@ import os from "node:os";
 import path from "node:path";
 import { BlockedUrlError, parseRepoRef, validateUrl, filterFiles, type InputFile, type RepoRef, type RepoSnapshot, snapshotFromFiles } from "@omniforge/core";
 import { nodeResolver } from "../net.js";
+import { UserError } from "../http.js";
 import { sanitizedEnv } from "./jobs.js";
 
 const run = (args: string[], o: { cwd?: string; timeoutMs?: number; env?: Record<string, string>; maxBuffer?: number } = {}) =>
@@ -46,7 +47,7 @@ export async function cloneRepo(url: string, o: CloneOptions = {}): Promise<{ di
   if (r.code !== 0) {
     await fs.rm(dir, { recursive: true, force: true });
     const msg = r.stderr.replace(/Authorization: Basic [A-Za-z0-9+/=]+/g, "[REDACTED]").trim().split("\n").slice(-3).join(" ");
-    throw new Error(/not found|Authentication failed|could not read Username/i.test(msg) ? "Repository not found, or it is private and needs a token." : `git clone failed: ${msg}`);
+    throw new UserError(/not found|Authentication failed|could not read Username/i.test(msg) ? "Repository not found, or it is private and needs a token." : `git clone failed: ${msg}`);
   }
   const sha = (await run(["rev-parse", "HEAD"], { cwd: dir, timeoutMs: 10_000 })).stdout.trim() || null;
   const branch = (await run(["rev-parse", "--abbrev-ref", "HEAD"], { cwd: dir, timeoutMs: 10_000 })).stdout.trim() || null;
@@ -125,7 +126,7 @@ export async function gitLog(dir: string, n = 20) {
   return r.stdout.split("\n").filter(Boolean).map((l) => { const [sha, author, date, subject] = l.split("\x1f"); return { sha: sha!, author: author!, date: date!, subject: subject! }; });
 }
 export async function gitCheckout(dir: string, branch: string, create = false) {
-  if (!/^[\w./-]{1,100}$/.test(branch) || branch.startsWith("-")) throw new Error("Invalid branch name");
+  if (!/^[\w./-]{1,100}$/.test(branch) || branch.startsWith("-")) throw new UserError("Invalid branch name");
   const r = await run(["checkout", ...(create ? ["-b"] : []), branch], { cwd: dir, timeoutMs: 30_000 });
   return r.code === 0 ? { ok: true as const } : { ok: false as const, message: r.stderr.trim().slice(0, 300) };
 }

@@ -34,3 +34,6 @@ export class HttpError extends Error { constructor(public status: number, messag
 
 export const b64ToBytes = (s: string): Uint8Array => Uint8Array.from(Buffer.from(s, "base64"));
 export const bytesToB64 = (b: Uint8Array): string => Buffer.from(b).toString("base64");
+
+/** An error whose message is safe and useful to show the user (mapped to HTTP 400). */
+export class UserError extends Error { readonly status = 400; constructor(m: string) { super(m); this.name = "UserError"; } }

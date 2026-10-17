@@ -10,6 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DEFAULT_CRAWL, hashStr, now, uid, type Evidence, type Feature, type Finding, type Graph, type GraphNode, type Investigation } from "@omniforge/core";
+import { UserError } from "../http.js";
 import { exec, which } from "./detect.js";
 import { backupFiles, record } from "./changelog.js";
 import { JobManager, type JobMeta } from "./jobs.js";
@@ -20,13 +21,14 @@ export interface ReaStatus { status: ReaAvailability; path?: string; version?: s
 
 export function reaBinary(): string | null { return process.env.REA_BIN && fs.existsSync(process.env.REA_BIN) ? process.env.REA_BIN : which("rea"); }
 
-export async function reaStatus(): Promise<ReaStatus> {
+export async function reaStatus(o: { light?: boolean } = {}): Promise<ReaStatus> {
   const bin = reaBinary();
   const mcp = discoverReaMcp();
   if (!bin) return { status: "not-installed", via: "none", providers: [], mcp, detail: "REA is not installed. Install it from the Integrations page (you will be shown exactly what changes first)." };
   const v = await exec(bin, ["--version"], { timeoutMs: 15_000 });
   const version = (v.stdout || v.stderr).match(/\d+\.\d+\.\d+/)?.[0];
   if (v.code !== 0 && !version) return { status: "needs-configuration", path: bin, via: "binary", providers: [], mcp, detail: (v.stderr || v.stdout).trim().slice(0, 200) };
+  if (o.light) return { status: "available", path: bin, version, via: "binary", providers: [], mcp, detail: "Open Integrations → REA for provider details and readiness checks." };
   const providers = await reaProviders(bin);
   const d = await exec(bin, ["doctor", "--json"], { timeoutMs: 40_000 });
   let doctor: ReaStatus["doctor"];
@@ -80,7 +82,7 @@ export function planReaInstall(homeDir = os.homedir()): InstallPlan {
 }
 
 export function applyReaInstall(jobs: JobManager, o: { approved: boolean; homeDir?: string }): { job?: JobMeta; backup?: { dir: string; saved: string[] } } {
-  if (!o.approved) throw new Error("Installation was not approved.");
+  if (!o.approved) throw new UserError("Installation was not approved.");
   const plan = planReaInstall(o.homeDir);
   const backup = backupFiles(plan.backups);
   record({ action: "backup", detail: `Backed up ${backup.saved.length} agent config file(s) before REA install`, backup: backup.dir, files: backup.saved });
@@ -125,13 +127,13 @@ export class ReaJobs {
 
   start(opId: string, targetPath: string, o: ReaJobOptions = {}): JobMeta {
     const op = REA_OPS.find((x) => x.id === opId);
-    if (!op) throw new Error(`“${opId}” is not an allowed REA operation.`);
-    if (op.platforms && !op.platforms.includes(process.platform)) throw new Error(`${op.label} is not supported on ${process.platform}.`);
-    if (op.kind === "native-provider" && !o.approveLaunch) throw new Error("Native analysis launches Hopper/Ghidra/IDA on your machine; it needs explicit approval.");
+    if (!op) throw new UserError(`“${opId}” is not an allowed REA operation.`);
+    if (op.platforms && !op.platforms.includes(process.platform)) throw new UserError(`${op.label} is not supported on ${process.platform}.`);
+    if (op.kind === "native-provider" && !o.approveLaunch) throw new UserError("Native analysis launches Hopper/Ghidra/IDA on your machine; it needs explicit approval.");
     const bin = reaBinary();
-    if (!bin) throw new Error("REA is not installed.");
-    if (!path.isAbsolute(targetPath) || targetPath.includes("\0")) throw new Error("Provide an absolute path.");
-    if (!fs.existsSync(targetPath)) throw new Error(`Not found: ${targetPath}`);
+    if (!bin) throw new UserError("REA is not installed.");
+    if (!path.isAbsolute(targetPath) || targetPath.includes("\0")) throw new UserError("Provide an absolute path.");
+    if (!fs.existsSync(targetPath)) throw new UserError(`Not found: ${targetPath}`);
     const tmp = path.join(this.dir, `pending-${uid("r")}.json`);
     const meta = this.jobs.start({ kind: "rea", label: `REA · ${op.label} · ${path.basename(targetPath)}`, cmd: bin, args: [op.id, targetPath, "--json", ...(op.extra?.(o) ?? [])], stdoutFile: tmp, timeoutMs: 20 * 60_000, progressParser, maxOutputBytes: 2_000_000 });
     // rename the result file once the job id is known
