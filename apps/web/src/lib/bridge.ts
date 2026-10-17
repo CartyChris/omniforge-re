@@ -20,7 +20,14 @@ export async function pair(url: string, code: string): Promise<BridgeConn> {
 export async function tauriBridge(): Promise<BridgeConn | null> {
   const w = window as unknown as { __TAURI_INTERNALS__?: { invoke: (c: string, a?: unknown) => Promise<any> } };
   if (!w.__TAURI_INTERNALS__) return null;
-  try { const i = await w.__TAURI_INTERNALS__.invoke("bridge_info"); return i?.url ? { url: i.url, token: i.uiToken, kind: "ui", version: i.version } : null; } catch { return null; }
+  const i = await w.__TAURI_INTERNALS__.invoke("bridge_info"); // rejects with the shell's own explanation if the engine failed to start
+  if (!i?.url) throw new Error("The desktop shell returned no engine address.");
+  return { url: i.url, token: i.uiToken, kind: "ui", version: i.version };
+}
+/** Writes one line to the app's engine.log (Help → Open Log Folder). Never pass secrets. */
+export function desktopLog(message: string) {
+  const w = window as unknown as { __TAURI_INTERNALS__?: { invoke: (c: string, a?: unknown) => Promise<any> } };
+  void w.__TAURI_INTERNALS__?.invoke("log_event", { message: message.slice(0, 500) }).catch(() => {});
 }
 export const isTauri = () => typeof window !== "undefined" && !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
 
@@ -30,7 +37,7 @@ export class Bridge {
   async raw(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<Response> {
     let r: Response;
     try { r = await fetch(`${this.conn.url}${path}`, { method, headers: this.headers({}, body !== undefined), body: body === undefined ? undefined : JSON.stringify(body), signal }); }
-    catch (e) { if ((e as Error).name === "AbortError") throw e; throw new BridgeError(0, "Lost connection to the desktop companion."); }
+    catch (e) { if ((e as Error).name === "AbortError") throw e; throw new BridgeError(0, `Lost connection to the desktop companion (${(e as Error).name}: ${(e as Error).message}).`); }
     if (!r.ok) { const j = await r.clone().json().catch(() => ({})); throw new BridgeError(r.status, j.error ?? `Bridge error ${r.status}`); }
     return r;
   }

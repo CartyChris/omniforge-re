@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What the OmniForge web UI may ask the native shell to do. No file-system, shell or HTTP plugin access is exposed to the page; privileged work goes through the authenticated local engine.",
+  "windows": ["main"],
+  "permissions": [
+    "core:event:default",
+    "core:app:default",
+    "opener:allow-open-url",
+    "allow-bridge-info",
+    "allow-pick-folder",
+    "allow-log-event",
+    "allow-keychain-get",
+    "allow-keychain-set",
+    "allow-keychain-delete",
+    "allow-keychain-names",
+    "allow-reveal-logs"
+  ]
+}

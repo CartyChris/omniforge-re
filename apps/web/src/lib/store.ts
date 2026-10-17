@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { toast } from "sonner";
 import { createProject, exportProject as coreExport, importProject as coreImport, projectStats, upsertInvestigation, type CrawlConfig, type Investigation, type LogEntry, type ModelInfo, type Project, type ProviderConfig, type TaskKind, DEFAULT_CRAWL } from "@omniforge/core";
 import { db, ls } from "./storage";
-import { Bridge, isTauri, probe, tauriBridge, type BridgeConn } from "./bridge";
+import { Bridge, desktopLog, isTauri, probe, tauriBridge, type BridgeConn } from "./bridge";
 import { debounce } from "./utils";
 import { appLog } from "./log";
 
@@ -37,6 +37,7 @@ interface State {
   bridge: Bridge | null;
   bridgeState: "none" | "checking" | "connected" | "lost";
   bridgeInfo: BridgeInfo | null;
+  bridgeError: string | null;
   init(): Promise<void>;
   patchSettings(p: Partial<Settings>): void;
   // projects
@@ -67,7 +68,7 @@ interface State {
 const persistProject = debounce(async (p: Project) => { await db.set(`project:${p.id}`, p); const idx = await db.get<ProjectIndexItem[]>("projects:index") ?? []; const item: ProjectIndexItem = { id: p.id, name: p.name, updatedAt: p.updatedAt, stats: projectStats(p), localOnly: p.localOnly }; await db.set("projects:index", [item, ...idx.filter((i) => i.id !== p.id)]); useApp.setState((s) => ({ projects: [item, ...s.projects.filter((i) => i.id !== p.id)] })); }, 500);
 
 export const useApp = create<State>((set, get) => ({
-  ready: false, settings: DEFAULT_SETTINGS, projects: [], project: null, providers: [], models: [], modelErrors: [], modelsLoading: false, jobs: {}, bridge: null, bridgeState: "none", bridgeInfo: null,
+  ready: false, settings: DEFAULT_SETTINGS, projects: [], project: null, providers: [], models: [], modelErrors: [], modelsLoading: false, jobs: {}, bridge: null, bridgeState: "none", bridgeInfo: null, bridgeError: null,
 
   async init() {
     if (get().ready) return;
@@ -89,8 +90,10 @@ export const useApp = create<State>((set, get) => ({
     set({ settings, providers, projects, project, ready: true });
     // bridge: desktop app first, else a previously paired companion
     set({ bridgeState: "checking" });
-    const t = await tauriBridge();
-    if (t) { await get().connectBridge(t); return; }
+    if (isTauri()) {
+      try { const t = await tauriBridge(); if (t) { await get().connectBridge(t); set({ bridgeError: null }); return; } }
+      catch (e) { const msg = (e as Error)?.message ?? String(e); desktopLog(`UI could not reach the engine: ${msg} [origin ${location.origin}]`); appLog.push("error", "desktop", msg); set({ bridgeState: "lost", bridgeError: msg }); return; }
+    }
     const saved = ls.get<BridgeConn | null>("omniforge.bridge", null);
     if (saved && (!saved.expiresAt || saved.expiresAt > Date.now())) {
       const p = await probe(saved.url);

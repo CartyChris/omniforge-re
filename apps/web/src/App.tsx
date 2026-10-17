@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect } from "react";
-import { HashRouter, Route, Routes } from "react-router";
+import { HashRouter, Route, Routes, useNavigate } from "react-router";
+import { initDesktop } from "@/lib/desktop";
 import { Toaster } from "sonner";
 import { useApp } from "@/lib/store";
 import { refreshModels } from "@/lib/ai";
@@ -20,6 +21,8 @@ const Integrations = lazy(() => import("@/pages/Integrations"));
 const Deployments = lazy(() => import("@/pages/Deployments"));
 const Settings = lazy(() => import("@/pages/Settings"));
 
+function DesktopBridge() { const nav = useNavigate(); useEffect(() => { let un: (() => void) | undefined; void initDesktop(nav).then((u) => (un = u)); return () => un?.(); }, [nav]); return null; }
+
 export default function App() {
   const init = useApp((s) => s.init);
   const theme = useApp((s) => s.settings.theme);
@@ -30,6 +33,7 @@ export default function App() {
   useEffect(() => { if (ready) void refreshModels(); }, [ready, providers, bridgeState]);
   return (
     <HashRouter>
+      <DesktopBridge />
       <Suspense fallback={<div className="grid h-dvh place-items-center"><Spinner className="size-6" /></div>}>
         <Routes>
           <Route element={<Shell />}>

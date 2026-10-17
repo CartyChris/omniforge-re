@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Bot, CheckCircle2, ExternalLink, Github, HardDrive, Link2, Loader2, PlugZap, RefreshCw, RotateCcw, ShieldAlert, Triangle, Unplug, Wrench, XCircle } from "lucide-react";
 import { github, vercel } from "@omniforge/core";
-import { useApp } from "@/lib/store";
+import { isDesktop, useApp } from "@/lib/store";
 import { pair, probe } from "@/lib/bridge";
 import { vault } from "@/lib/vault";
 import { GH_KEY, VC_KEY, appFetch, vcOpts } from "@/lib/github";
@@ -72,7 +72,7 @@ function VercelCard() {
 }
 
 function Companion() {
-  const { bridgeState, bridgeInfo, bridge, connectBridge, disconnectBridge, settings, patchSettings } = useApp();
+  const { bridgeState, bridgeInfo, bridge, connectBridge, disconnectBridge, settings, patchSettings, bridgeError } = useApp();
   const [url, setUrl] = useState(settings.bridgeUrl); const [code, setCode] = useState(""); const [busy, setBusy] = useState(false); const [found, setFound] = useState<boolean | undefined | null>(undefined);
   // Looking for the app means a request to localhost, which browsers may gate behind a permission prompt: do it on demand.
   const look = useCallback(async () => { setFound(null); setFound(!!(await probe(url, 1500))); }, [url]);
@@ -81,7 +81,8 @@ function Companion() {
   return (
     <Card><CardHeader><CardTitle className="flex items-center gap-2"><HardDrive className="size-4" />Desktop app</CardTitle><Badge tone={connected ? "ok" : "neutral"} dot>{connected ? `connected · v${bridgeInfo?.version}` : bridgeState === "lost" ? "connection lost" : "not connected"}</Badge></CardHeader>
       <CardBody className="space-y-4">
-        {connected ? <div className="flex flex-wrap items-center gap-3 text-[13px]"><span className="text-muted">Local folders, installed-app inspection, REA, AI CLIs, local models and git are unlocked.</span><span className="text-xs text-faint">{bridgeInfo?.system.platform} {bridgeInfo?.system.arch}{bridgeInfo?.system.appleSilicon ? " · Apple Silicon" : ""}</span><div className="ml-auto flex gap-2">{bridge?.conn.kind === "session" && <Button variant="secondary" icon={<Unplug className="size-4" />} onClick={disconnectBridge}>Unpair</Button>}</div></div>
+        {isDesktop() && !connected ? <div role="alert" className="space-y-1 rounded-lg border border-bad/30 bg-bad/10 p-3 text-[13px] text-bad"><p className="font-medium">The built-in engine isn't reachable.</p><p className="break-words">{bridgeError ?? "Unknown error."}</p><p className="text-xs text-muted">Choose Help → Open Log Folder and send engine.log if this persists.</p></div>
+          : connected ? <div className="flex flex-wrap items-center gap-3 text-[13px]"><span className="text-muted">Local folders, installed-app inspection, REA, AI CLIs, local models and git are unlocked.</span><span className="text-xs text-faint">{bridgeInfo?.system.platform} {bridgeInfo?.system.arch}{bridgeInfo?.system.appleSilicon ? " · Apple Silicon" : ""}</span><div className="ml-auto flex gap-2">{bridge?.conn.kind === "session" && <Button variant="secondary" icon={<Unplug className="size-4" />} onClick={disconnectBridge}>Unpair</Button>}</div></div>
           : <div className="grid gap-5 md:grid-cols-2">
             <div className="space-y-2 text-[13px] text-muted"><p className="font-medium text-fg">The macOS app unlocks everything</p><p>Install OmniForge RE for macOS (Apple Silicon or Intel), open <b>Settings → Pair a browser</b>, then enter the code here. The connection is loopback-only, authenticated, and scoped — the browser can never run commands or write files unless you grant it per session.</p><a className="inline-flex items-center gap-1 text-accent hover:underline" href={releases} target="_blank" rel="noopener noreferrer">Get the macOS app<ExternalLink className="size-3.5" /></a></div>
             <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); void doPair(); }}>

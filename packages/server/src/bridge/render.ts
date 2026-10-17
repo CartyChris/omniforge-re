@@ -8,9 +8,21 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { chromium, type Browser, type Page } from "playwright-core";
+import { pathToFileURL } from "node:url";
+import type { Browser, Page } from "playwright-core";
 import { privateIpReason, validateUrl, type RenderResult, type Renderer } from "@omniforge/core";
 import { which } from "./detect.js";
+
+/**
+ * Playwright is loaded lazily and by a non-literal specifier so the bridge can be compiled into a single binary
+ * (the desktop app ships playwright-core as a resource folder and points OMNIFORGE_PLAYWRIGHT at it).
+ */
+async function loadPlaywright(): Promise<typeof import("playwright-core")> {
+  const dir = process.env.OMNIFORGE_PLAYWRIGHT;
+  const spec = dir ? pathToFileURL(path.join(dir, "index.mjs")).href : "playwright-core";
+  try { return (await import(spec)) as typeof import("playwright-core"); }
+  catch (e) { throw new Error(`The page renderer (playwright-core) could not be loaded: ${(e as Error).message}`); }
+}
 
 export function findChrome(): string | null {
   const env = process.env.OMNIFORGE_CHROME ?? process.env.CHROME_PATH;
@@ -36,6 +48,7 @@ export class PlaywrightRenderer implements Renderer {
     if (this.browser) return;
     const exe = this.o.executablePath ?? findChrome();
     if (!exe) throw new Error("No Chrome/Chromium found. Install Google Chrome or set OMNIFORGE_CHROME to a Chrome-family executable.");
+    const { chromium } = await loadPlaywright();
     this.browser = await chromium.launch({ executablePath: exe, headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--disable-extensions", "--disable-background-networking", "--mute-audio"] });
   }
   async close() { await this.browser?.close().catch(() => {}); this.browser = null; }

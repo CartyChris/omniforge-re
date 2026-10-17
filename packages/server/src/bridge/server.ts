@@ -34,6 +34,7 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
   const getRenderer = () => (renderer ??= new PlaywrightRenderer({ allowPrivate: true }));
   let auth!: BridgeAuth;
   let cache: { at: number; data: unknown } | null = null;
+  let rejectLogged = 0;
   const version = o.version ?? "0.1.0";
 
   const route = async (req: Request, p: Principal | null, url: URL): Promise<Response> => {
@@ -220,6 +221,8 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
         const status = e instanceof AuthError || e instanceof HttpError || e instanceof FsError ? e.status : user ? 400 : 500;
         response = err(status === 500 ? "Internal error" : (e as Error).message, status);
         if (status === 500) console.error("[bridge]", (e as Error).message);
+        // Access-control rejections are logged (never tokens or bodies) so "the app can't connect" is diagnosable from engine.log.
+        else if (e instanceof AuthError && rejectLogged++ < 60) console.error(`[bridge] rejected ${status} ${nreq.method} ${url.pathname} origin=${origin ?? "-"} host=${headers.get("host") ?? "-"}: ${(e as Error).message}`);
       }
       const h: Record<string, string> = { ...cors };
       response.headers.forEach((v, k) => (h[k] = v));

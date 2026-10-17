@@ -11,6 +11,12 @@
  * On the desktop app, credentials go to the macOS Keychain instead (see desktop.ts).
  */
 import { db } from "./storage";
+import { isTauri } from "./bridge";
+
+/** On the desktop app credentials live in the macOS Keychain (Rust commands), not in the browser database. */
+const invoke = <T>(cmd: string, args?: Record<string, unknown>): Promise<T> => (window as unknown as { __TAURI_INTERNALS__: { invoke: (c: string, a?: unknown) => Promise<T> } }).__TAURI_INTERNALS__.invoke(cmd, args);
+let keychainOk: boolean | undefined;
+async function useKeychain() { if (!isTauri()) return false; if (keychainOk === undefined) keychainOk = await invoke<string[]>("keychain_names").then(() => true, () => false); return keychainOk; }
 
 type Blob = { iv: string; ct: string };
 type Meta = { mode: "device" | "passphrase"; salt?: string };
@@ -56,12 +62,12 @@ async function save(data: Record<string, string>) {
 }
 
 export const vault = {
-  async get(name: string): Promise<string | undefined> { return (await load())[name]; },
-  async set(name: string, value: string) { await save({ ...(await load()), [name]: value }); },
-  async del(name: string) { const d = { ...(await load()) }; delete d[name]; await save(d); },
-  async names(): Promise<string[]> { try { return Object.keys(await load()); } catch { return []; } },
-  async mode() { return (await meta()).mode; },
-  async locked() { const m = await meta(); return m.mode === "passphrase" && !sessionKey; },
+  async get(name: string): Promise<string | undefined> { if (await useKeychain()) return (await invoke<string | null>("keychain_get", { name })) ?? undefined; return (await load())[name]; },
+  async set(name: string, value: string) { if (await useKeychain()) return void (await invoke("keychain_set", { name, value })); await save({ ...(await load()), [name]: value }); },
+  async del(name: string) { if (await useKeychain()) return void (await invoke("keychain_delete", { name })); const d = { ...(await load()) }; delete d[name]; await save(d); },
+  async names(): Promise<string[]> { if (await useKeychain()) return invoke<string[]>("keychain_names").catch(() => []); try { return Object.keys(await load()); } catch { return []; } },
+  async mode(): Promise<"device" | "passphrase" | "keychain"> { if (await useKeychain()) return "keychain"; return (await meta()).mode; },
+  async locked() { if (await useKeychain()) return false; const m = await meta(); return m.mode === "passphrase" && !sessionKey; },
   /** Switch to passphrase mode, re-encrypting existing secrets. */
   async enablePassphrase(pass: string) {
     if (pass.length < 8) throw new Error("Use at least 8 characters.");
@@ -80,5 +86,5 @@ export const vault = {
   },
   lock() { sessionKey = null; cache = null; },
   async disablePassphrase() { const data = await load(); await db.set("vault:meta", { mode: "device" } satisfies Meta); sessionKey = null; cache = null; await save(data); },
-  async wipe() { cache = null; sessionKey = null; await db.del("vault:data"); await db.del("vault:meta"); },
+  async wipe() { if (await useKeychain()) { for (const n of await invoke<string[]>("keychain_names")) await invoke("keychain_delete", { name: n }); return; } cache = null; sessionKey = null; await db.del("vault:data"); await db.del("vault:meta"); },
 };

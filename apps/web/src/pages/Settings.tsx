@@ -53,7 +53,7 @@ function General() {
 
 function Privacy() {
   const { settings, patchSettings } = useApp();
-  const [mode, setMode] = useState<"device" | "passphrase">("device"); const [locked, setLocked] = useState(false); const [names, setNames] = useState<string[]>([]);
+  const [mode, setMode] = useState<"device" | "passphrase" | "keychain">("device"); const [locked, setLocked] = useState(false); const [names, setNames] = useState<string[]>([]);
   const [pass, setPass] = useState(""); const [open, setOpen] = useState<"set" | "unlock" | "wipe" | null>(null);
   const refresh = async () => { setMode(await vault.mode()); setLocked(await vault.locked()); setNames(await vault.names()); };
   useEffect(() => { void refresh(); }, []);
@@ -64,8 +64,8 @@ function Privacy() {
         <ToggleRow title="Local-only mode" desc="Never send analysed content to a cloud AI provider. Only local models (Ollama, LM Studio, llama.cpp, MLX, Unsloth) are used; cloud providers are disabled everywhere, including agents and Q&A." checked={settings.localOnly} onChange={(v) => patchSettings({ localOnly: v })} />
         <div className="space-y-2 pt-3 text-[13px] text-muted"><p className="font-medium text-fg">What leaves your browser</p><ul className="list-disc space-y-1 pl-5"><li>Website analysis: the target URL goes to the OmniForge analysis service (or your desktop app) so pages can be fetched from a server, not your browser.</li><li>Files, ZIPs and folders you add are analysed in your browser and never uploaded.</li><li>AI calls go only to the providers you configured, with fenced, secret-redacted excerpts.</li><li>Your credentials are encrypted on this device and sent only to their own service.</li></ul></div>
       </CardBody></Card>
-      <Card><CardHeader><CardTitle className="flex items-center gap-2"><KeyRound className="size-4" />Credential vault</CardTitle><Badge tone={locked ? "warn" : "ok"} dot>{locked ? "Locked" : mode === "passphrase" ? "Passphrase-protected" : "Device-encrypted"}</Badge></CardHeader><CardBody className="space-y-4">
-        <p className="text-[13px] text-muted">API keys and tokens are AES-GCM encrypted in this browser's storage, never in project exports or settings. {mode === "device" ? "Add a passphrase so they can't be used by anyone with access to this browser profile." : "The passphrase is never stored; you unlock the vault once per session."}</p>
+      <Card><CardHeader><CardTitle className="flex items-center gap-2"><KeyRound className="size-4" />Credential vault</CardTitle><Badge tone={locked ? "warn" : "ok"} dot>{locked ? "Locked" : mode === "keychain" ? "macOS Keychain" : mode === "passphrase" ? "Passphrase-protected" : "Device-encrypted"}</Badge></CardHeader><CardBody className="space-y-4">
+        <p className="text-[13px] text-muted">{mode === "keychain" ? "API keys and tokens are stored in the macOS Keychain, never in project exports, settings or the app's own files. macOS protects them with your login." : <>API keys and tokens are AES-GCM encrypted in this browser's storage, never in project exports or settings. {mode === "device" ? "Add a passphrase so they can't be used by anyone with access to this browser profile." : "The passphrase is never stored; you unlock the vault once per session."}</>}</p>
         <div className="flex flex-wrap gap-2">
           {mode === "device" && <Button variant="secondary" icon={<Lock className="size-4" />} onClick={() => setOpen("set")}>Set passphrase</Button>}
           {mode === "passphrase" && locked && <Button variant="primary" icon={<LockOpen className="size-4" />} onClick={() => setOpen("unlock")}>Unlock</Button>}

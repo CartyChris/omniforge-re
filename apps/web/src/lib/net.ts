@@ -5,7 +5,7 @@
  *   • other allow-listed APIs → bridge forwarder if paired, else the hosted /api/forward
  *   • anything else → direct (user's custom endpoint; CORS is the endpoint's responsibility)
  */
-import type { Bridge } from "./bridge";
+import { isTauri, type Bridge } from "./bridge";
 
 const DIRECT_OK = new Set(["api.anthropic.com", "api.openai.com", "openrouter.ai", "generativelanguage.googleapis.com", "api.mistral.ai", "api.groq.com", "api.together.xyz", "api.deepseek.com", "api.github.com"]);
 const FORWARDABLE = new Set(["api.x.ai", "api.moonshot.ai", "api.moonshot.cn", "api.vercel.com", ...DIRECT_OK]);
@@ -19,7 +19,8 @@ export function smartFetch(getBridge: () => Bridge | null, hostedBase = ""): typ
       if (bridge) return bridge.fetchLike(url.toString(), init);
       return fetch(url, init); // direct: works on localhost dev and in Chrome/Firefox; surfaced clearly when it fails
     }
-    if (DIRECT_OK.has(url.hostname)) return fetch(url, init);
+    // Desktop app: every provider call goes through the local engine (no browser CORS rules, one place to enforce the host allow-list).
+    if (DIRECT_OK.has(url.hostname)) return bridge && isTauri() ? bridge.fetchLike(url.toString(), init) : fetch(url, init);
     if (FORWARDABLE.has(url.hostname)) {
       if (bridge) return bridge.fetchLike(url.toString(), init);
       const headers: Record<string, string> = {}; new Headers(init?.headers).forEach((v, k) => (headers[k] = v));
