@@ -3,6 +3,7 @@
  * absolute paths and symlinks that point outside the root; never returns the
  * VALUES of .env files.
  */
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { dotenvNames, type InputFile } from "@omniforge/core";
@@ -21,7 +22,8 @@ export class Roots {
     const st = await fs.stat(real);
     if (!st.isDirectory()) throw new FsError(400, "Not a folder");
     if (real === path.parse(real).root || real === process.env.HOME) throw new FsError(400, "Choose a project folder, not the filesystem root or your whole home directory.");
-    const id = Buffer.from(real).toString("base64url").slice(0, 16);
+    // hash of the full real path: a truncated base64 prefix collided for sibling folders (e.g. /Users/a/Projects/x and /y), silently replacing an earlier approval
+    const id = crypto.createHash("sha256").update(real).digest("hex").slice(0, 16);
     const r: Root = { id, path: real, label: o.label ?? path.basename(real), writable: !!o.writable };
     this.roots.set(id, r);
     return r;
@@ -97,6 +99,18 @@ export async function writeText(roots: Roots, rootId: string, rel: string, conte
   await fs.mkdir(path.dirname(p), { recursive: true });
   await fs.writeFile(p, content, "utf8");
   return { path: rel, bytes: Buffer.byteLength(content) };
+}
+
+/** Delete ONE regular file inside a writable approved root. Never directories, never symlink targets outside the root, never credential files. */
+export async function deleteFile(roots: Roots, rootId: string, rel: string) {
+  const root = roots.get(rootId);
+  if (!root.writable) throw new FsError(403, "This folder was approved read-only");
+  if (SECRET_FILE.test(rel)) throw new FsError(403, "Refusing to touch credential-style files");
+  const p = await roots.resolve(rootId, rel, { mustExist: true });
+  const st = await fs.lstat(p);
+  if (!st.isFile()) throw new FsError(400, "Only regular files can be deleted (not folders or links)");
+  await fs.unlink(p);
+  return { path: rel, deleted: true };
 }
 
 export async function snapshotFolder(roots: Roots, rootId: string, o: { maxFiles?: number; maxFileBytes?: number; maxTotalBytes?: number; sub?: string } = {}): Promise<{ files: InputFile[]; skipped: { path: string; reason: string }[] }> {

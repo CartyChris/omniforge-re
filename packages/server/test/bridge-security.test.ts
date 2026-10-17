@@ -91,6 +91,17 @@ describe("approved-root filesystem", () => {
     expect(await writeText(roots, rw.id, "src/b.ts", "ok")).toMatchObject({ bytes: 2 });
     expect(fs.readFileSync(path.join(dir, "src/b.ts"), "utf8")).toBe("ok");
   });
+  it("gives sibling folders distinct ids so approving one can never replace (or downgrade) another", async () => {
+    const base = fs.mkdtempSync(path.join(tmp, "siblings-"));
+    const a = path.join(base, "project-alpha"), b = path.join(base, "project-beta");
+    fs.mkdirSync(a); fs.mkdirSync(b);
+    const roots = new Roots();
+    const ra = await roots.add(a, { writable: true }); const rb = await roots.add(b, { writable: false });
+    expect(ra.id).not.toBe(rb.id);
+    expect(roots.list().map((r) => [r.label, r.writable])).toEqual([["project-alpha", true], ["project-beta", false]]);
+    expect(await writeText(roots, ra.id, "ok.txt", "x")).toMatchObject({ bytes: 1 }); // alpha is still writable after beta was approved read-only
+    expect((await roots.add(a, { writable: true })).id).toBe(ra.id); // re-approving the same folder is idempotent
+  });
   it("blocks traversal, absolute paths, unapproved roots and symlink escapes", async () => {
     const outside = fs.mkdtempSync(path.join(tmp, "outside-"));
     fs.writeFileSync(path.join(outside, "secret.txt"), "TOP SECRET");

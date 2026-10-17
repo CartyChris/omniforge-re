@@ -14,7 +14,7 @@ import { AuthError, BridgeAuth, need, type Principal, type Scope, DANGEROUS_SCOP
 import { readChanges, restoreBackup, listBackups } from "./changelog.js";
 import { ADAPTERS, detectClis, probeCli, runCli, testCli } from "./clis.js";
 import { detectLocalRuntimes, detectTools, systemInfo } from "./detect.js";
-import { FsError, Roots, listTree, readText, snapshotFolder, writeText } from "./fsx.js";
+import { FsError, Roots, deleteFile, listTree, readText, snapshotFolder, writeText } from "./fsx.js";
 import { cloneToSnapshot, gitCheckout, gitCommitAll, gitDiff, gitInit, gitLog, gitStatus } from "./git.js";
 import { JobManager } from "./jobs.js";
 import { inspectPath } from "./package.js";
@@ -96,6 +96,7 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
     if (is("GET", "/bridge/fs/tree")) { need(p, "fs:read"); return json(await listTree(roots, url.searchParams.get("root") ?? "", { sub: url.searchParams.get("sub") ?? undefined })); }
     if (is("GET", "/bridge/fs/read")) { need(p, "fs:read"); return json(await readText(roots, url.searchParams.get("root") ?? "", url.searchParams.get("path") ?? "")); }
     if (is("POST", "/bridge/fs/write")) { need(p, "fs:write"); const b = await readJson(req, 5_000_000); return json(await writeText(roots, b.root, b.path, String(b.content ?? ""))); }
+    if (is("POST", "/bridge/fs/delete")) { need(p, "fs:write"); const b = await readJson(req, 4000); return json(await deleteFile(roots, b.root, String(b.path))); }
     if (is("POST", "/bridge/analyze-folder")) {
       need(p, "fs:read"); const b = await readJson(req, 4000);
       const { files, skipped } = await snapshotFolder(roots, b.root, { sub: b.sub });

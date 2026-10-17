@@ -117,6 +117,22 @@ describe("privileged capabilities through the bridge (desktop UI token)", () => 
   let rootId: string;
   beforeAll(async () => { rootId = (await ui("POST", "/bridge/roots", { path: path.resolve(__dirname, "../../../fixtures"), writable: false })).json.id; });
 
+  it("deletes only regular files inside a writable approved folder (never folders, links, secrets, or paths outside)", async () => {
+    const dir = fs.mkdtempSync(path.join(tmp, "d-")); const outside = fs.mkdtempSync(path.join(tmp, "out-"));
+    fs.writeFileSync(path.join(dir, "a.txt"), "x"); fs.writeFileSync(path.join(dir, ".env"), "K=1"); fs.mkdirSync(path.join(dir, "sub")); fs.writeFileSync(path.join(outside, "victim.txt"), "keep"); fs.symlinkSync(path.join(outside, "victim.txt"), path.join(dir, "link.txt"));
+    const roDir = fs.mkdtempSync(path.join(tmp, "ro-")); fs.writeFileSync(path.join(roDir, "a.txt"), "x");
+    const w = (await ui("POST", "/bridge/roots", { path: dir, writable: true })).json.id; const ro = (await ui("POST", "/bridge/roots", { path: roDir, writable: false })).json.id;
+    expect((await ui("POST", "/bridge/fs/delete", { root: ro, path: "a.txt" })).status).toBe(403); // read-only approval
+    expect(fs.existsSync(path.join(roDir, "a.txt"))).toBe(true);
+    expect((await ui("POST", "/bridge/fs/delete", { root: w, path: "../" + path.basename(outside) + "/victim.txt" })).status).toBe(403); // traversal
+    expect((await ui("POST", "/bridge/fs/delete", { root: w, path: ".env" })).status).toBe(403); // credential-style file
+    expect((await ui("POST", "/bridge/fs/delete", { root: w, path: "sub" })).status).toBe(400); // folders refused
+    expect((await ui("POST", "/bridge/fs/delete", { root: w, path: "link.txt" })).status).toBeGreaterThanOrEqual(400); // symlink escaping the root
+    expect(fs.existsSync(path.join(outside, "victim.txt"))).toBe(true);
+    const ok = await ui("POST", "/bridge/fs/delete", { root: w, path: "a.txt" });
+    expect(ok.status).toBe(200); expect(fs.existsSync(path.join(dir, "a.txt"))).toBe(false);
+    expect((await ui("POST", "/bridge/fs/delete", { root: w, path: "a.txt" })).status).toBeGreaterThanOrEqual(400); // already gone
+  });
   it("streams job output over SSE and cancels a running job (process group)", async () => {
     const wr = (await ui("POST", "/bridge/roots", { path: fs.mkdtempSync(path.join(tmp, "w-")), writable: true })).json.id;
     const job = (await ui("POST", "/bridge/jobs", { root: wr, cmd: "node", args: ["-e", "console.log('line1');setTimeout(()=>console.log('line2'),150);setTimeout(()=>{},30000)"] })).json;
