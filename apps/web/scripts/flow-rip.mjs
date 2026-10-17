@@ -1,0 +1,37 @@
+import { chromium } from "@playwright/test";
+import assert from "node:assert/strict";
+const out = process.argv[2];
+const b = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium", args: ["--no-sandbox"] });
+const ctx = await b.newContext({ viewport: { width: 1440, height: 1100 }, acceptDownloads: true });
+const page = await ctx.newPage();
+const errs = [];
+page.on("pageerror", (e) => errs.push("pageerror: " + e.message));
+page.on("console", (m) => { if (m.type() === "error") errs.push("console: " + m.text().slice(0, 200)); });
+await page.addInitScript(() => { try { localStorage.setItem("omniforge.settings", JSON.stringify({ onboarded: true })); localStorage.setItem("omniforge.ack", "1"); } catch {} });
+await page.goto("http://127.0.0.1:5173/#/repo-rip", { waitUntil: "networkidle" });
+await page.getByLabel("Repositories", { exact: true }).fill("octocat/Hello-World");
+await page.getByRole("button", { name: "Inspect" }).click();
+await page.waitForSelector("text=Rights checkpoint", { timeout: 60000 });
+// gate: no licence => run must be blocked until the user attests
+const run = page.getByRole("button", { name: "Make the copy" });
+assert.equal(await run.isDisabled(), true, "run must be disabled before attestation");
+await page.screenshot({ path: out + "-rip-inspect.png" });
+await page.getByLabel(/I own this code/).check();
+assert.equal(await run.isDisabled(), false, "run must be enabled after attestation");
+await run.click();
+await page.waitForSelector("text=Copy ready", { timeout: 60000 });
+const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Download ZIP" }).click()]);
+await dl.saveAs(out + "-copy.zip");
+await page.screenshot({ path: out + "-rip-copy.png" });
+// mesh two repos side-by-side
+await page.goto("http://127.0.0.1:5173/#/repo-rip", { waitUntil: "networkidle" });
+await page.getByLabel("Repositories", { exact: true }).fill("octocat/Hello-World\noctocat/Spoon-Knife");
+await page.getByRole("button", { name: "Inspect" }).click();
+await page.waitForSelector("text=Rights checkpoint", { timeout: 60000 });
+await page.getByLabel(/I own this code/).check();
+await page.getByRole("radio", { name: /Mesh together/ }).click();
+await page.getByRole("button", { name: "Mesh them" }).click();
+await page.waitForSelector("text=Mesh ready", { timeout: 60000 });
+await page.screenshot({ path: out + "-rip-mesh.png" });
+console.log(errs.length ? errs.join("\n") : "no console errors");
+await b.close();
