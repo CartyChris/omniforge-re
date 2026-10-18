@@ -39,3 +39,4 @@ export * as vercel from "./integrations/vercel.js";
 export * from "./integrations/osv.js";
 export * from "./analyze/sourceInvestigation.js";
 export * from "./analyze/artifacts.js";
+export * from "./analyze/compare.js";

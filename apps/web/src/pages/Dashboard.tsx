@@ -16,6 +16,7 @@ export default function Dashboard() {
   const running = Object.values(jobs).filter((j) => j.status === "running");
   const localServices = (bridgeInfo?.runtimes.services ?? []).filter((s: any) => s.status === "reachable");
   const nProv = new Set(models.map((m) => m.provider)).size;
+  const recent = [...(project?.deployments ?? []).map((d) => ({ at: d.at, t: `Deploy · ${d.provider}`, ok: !/fail|error/i.test(d.status), d: d.url ?? d.status, to: "/deployments" })), ...(project?.builds ?? []).map((b) => ({ at: b.at, t: b.kind, ok: b.ok, d: b.log.split("\n")[0] ?? "", to: "/applications" }))].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 5);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
@@ -51,6 +52,7 @@ export default function Dashboard() {
         </Card>
 
         <div className="space-y-6">
+          {recent.length > 0 && <Card><CardHeader><CardTitle>Recent builds & deployments</CardTitle></CardHeader><ul className="divide-y divide-line" data-testid="recent-activity">{recent.map((h, i) => <li key={i}><Link to={h.to} className="flex items-center gap-2 px-4 py-2 text-[13px] transition hover:bg-elevated"><Badge tone={h.ok ? "ok" : "bad"}>{h.ok ? "ok" : "failed"}</Badge><span className="font-medium">{h.t}</span><span className="min-w-0 flex-1 truncate text-muted">{h.d}</span><span className="text-xs text-faint">{ago(h.at)}</span></Link></li>)}</ul></Card>}
           <Card>
             <CardHeader><CardTitle>Status</CardTitle></CardHeader>
             <CardBody className="space-y-3 text-sm">

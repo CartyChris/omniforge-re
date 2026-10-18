@@ -4,7 +4,9 @@ import { expect, type Page } from "@playwright/test";
 export async function prepare(page: Page, extra: Record<string, unknown> = {}) {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
-  page.on("console", (m) => { if (m.type() === "error") { const l = m.location(); errors.push(`console: ${m.text().slice(0, 250)}${l?.url ? ` @ ${l.url}:${l.lineNumber}` : ""}`); } });
+  // The report preview is sandbox="" (no scripts). Some Chromium builds log a console error when Playwright's own injected script is refused there —
+  // that is the sandbox doing its job (analyze.spec asserts the attribute), not an app error. Location is "about:srcdoc:0" with no source file.
+  page.on("console", (m) => { if (m.type() === "error" && !/^Blocked script execution in 'about:srcdoc'/.test(m.text())) { const l = m.location(); errors.push(`console: ${m.text().slice(0, 250)}${l?.url ? ` @ ${l.url}:${l.lineNumber}` : ""}`); } });
   await page.addInitScript((s) => { try { localStorage.setItem("omniforge.settings", JSON.stringify({ onboarded: true, ...s })); localStorage.setItem("omniforge.ack", "1"); } catch { /* sandboxed iframes have no storage */ } }, extra);
   return errors;
 }

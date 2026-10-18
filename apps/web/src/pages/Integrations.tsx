@@ -5,6 +5,11 @@ import { github, vercel } from "@omniforge/core";
 import { isDesktop, useApp } from "@/lib/store";
 import { pair, probe } from "@/lib/bridge";
 import { vault } from "@/lib/vault";
+import { runHealthCheck, type HealthCheck } from "@/lib/health";
+import { refreshModels } from "@/lib/ai";
+import { audit } from "@/lib/audit";
+import { download } from "@/lib/utils";
+import { Link } from "react-router";
 import { GH_KEY, VC_KEY, appFetch, vcOpts } from "@/lib/github";
 import { requestApproval } from "@/lib/approvals";
 import { ago, cn } from "@/lib/utils";
@@ -18,6 +23,7 @@ export default function Integrations() {
     <div className="mx-auto max-w-5xl space-y-5 p-4 sm:p-6">
       <SectionTitle title="Integrations" sub="Connect GitHub and Vercel, pair the desktop app, and see which tools and AI CLIs OmniForge found on your Mac." />
       <div className="grid gap-5 lg:grid-cols-2"><GitHubCard /><VercelCard /></div>
+      <SetupCard />
       <Companion />
       <DesktopOnly />
     </div>
@@ -156,5 +162,24 @@ function Rea() {
         {canUi && changes && (changes.backups.length > 0 || changes.changes.length > 0) && <div className="space-y-2"><p className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-faint"><RotateCcw className="size-3.5" />Changes made to your machine & restore points</p>
           <ul className="divide-y divide-line rounded-lg border border-line">{changes.changes.slice(0, 8).map((c) => <li key={c.id} className="flex flex-wrap items-center gap-2 px-3 py-2"><Badge>{c.action}</Badge><span className="min-w-0 flex-1 truncate">{c.detail}</span><span className="text-xs text-faint">{ago(c.at)}</span>{c.backup && c.action !== "restore" && <Button size="xs" variant="ghost" onClick={() => restore(c.backup)}>Restore</Button>}</li>)}</ul></div>}
       </CardBody></Card>
+  );
+}
+
+const HC = { pass: <CheckCircle2 className="size-4 text-ok" />, warn: <ShieldAlert className="size-4 text-warn" />, fail: <XCircle className="size-4 text-bad" />, skip: <span className="grid size-4 place-items-center text-faint">–</span> };
+
+/** One button that really probes everything (engine, tools, providers, GitHub, Vercel) and can save the result as a report. */
+function SetupCard() {
+  const { refreshBridge, bridgeState } = useApp(); const [rows, setRows] = useState<HealthCheck[] | null>(null); const [busy, setBusy] = useState(false);
+  const run = async () => { setBusy(true); try { setRows(await runHealthCheck()); } finally { setBusy(false); } };
+  const fails = rows?.filter((r) => r.status === "fail").length ?? 0, warns = rows?.filter((r) => r.status === "warn").length ?? 0;
+  const reconnect = async () => { setBusy(true); try { if (bridgeState === "connected") await refreshBridge(true); await refreshModels(); setRows(await runHealthCheck()); toast.success("Reconnected and re-checked"); } catch (e) { toast.error((e as Error).message); } finally { setBusy(false); } };
+  const save = () => { download("omniforge-diagnostics.json", JSON.stringify({ app: "OmniForge RE", at: new Date().toISOString(), ua: navigator.userAgent, checks: rows }, null, 2), "application/json"); void audit("diagnostics report saved"); };
+  return (
+    <Card><CardHeader><CardTitle className="flex items-center gap-2"><Wrench className="size-4" />Setup & diagnostics</CardTitle>
+      <div className="flex gap-1.5"><Button size="xs" variant="primary" loading={busy} onClick={run}>{rows ? "Re-run checks" : "Run checks"}</Button>{rows && <><Button size="xs" variant="secondary" icon={<RefreshCw className="size-3.5" />} disabled={busy} onClick={reconnect}>Reconnect</Button><Button size="xs" variant="ghost" onClick={save}>Save report</Button></>}</div></CardHeader>
+      {!rows ? <CardBody><p className="text-[13px] text-muted">Tests the local engine, installed tools, AI providers and your GitHub and Vercel tokens — each with a real request, nothing assumed.</p></CardBody>
+        : <><ul className="divide-y divide-line" data-testid="health-checks">{rows.map((r) => <li key={r.id} className="flex items-start gap-3 px-4 py-2.5 text-[13px]">{HC[r.status]}<div className="min-w-0"><span className="font-medium">{r.label}</span><span className="text-muted"> — {r.detail}</span>{r.fix && r.status !== "pass" && <div className="text-xs text-faint">Fix: {r.fix}</div>}</div></li>)}</ul>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2.5 text-xs text-muted"><span>{fails ? `${fails} failing` : "Nothing failing"}{warns ? ` · ${warns} to review` : ""}</span><Link to="/settings" className="text-accent hover:underline">View logs & restore settings →</Link></div></>}
+    </Card>
   );
 }

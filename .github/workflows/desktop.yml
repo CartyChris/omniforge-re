@@ -24,14 +24,6 @@ jobs:
           - { target: x86_64-apple-darwin, arch: x86_64, label: intel }
     runs-on: macos-latest   # Apple Silicon runner; the Intel app is cross-compiled
     timeout-minutes: 60
-    env:
-      # Optional signing + notarisation. Without these secrets the app is built UNSIGNED (ad-hoc) and README says how to open it.
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -43,6 +35,23 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with: { workspaces: "apps/desktop/src-tauri -> target", key: "${{ matrix.target }}" }
       - run: pnpm install --frozen-lockfile
+
+      # Unset repository secrets expand to EMPTY strings, and Tauri treats a defined-but-empty APPLE_CERTIFICATE as "sign with this" and fails.
+      # So the signing variables are exported only when the secrets really exist; otherwise the app is ad-hoc signed (signingIdentity "-").
+      - name: Configure code signing (only when the Apple secrets exist)
+        shell: bash
+        env:
+          APPLE_CERTIFICATE_IN: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD_IN: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY_IN: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID_IN: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD_IN: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID_IN: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$APPLE_CERTIFICATE_IN" ] && [ -n "$APPLE_SIGNING_IDENTITY_IN" ]; then
+            { echo "APPLE_CERTIFICATE=$APPLE_CERTIFICATE_IN"; echo "APPLE_CERTIFICATE_PASSWORD=$APPLE_CERTIFICATE_PASSWORD_IN"; echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY_IN"; } >> "$GITHUB_ENV"
+            if [ -n "$APPLE_ID_IN" ] && [ -n "$APPLE_PASSWORD_IN" ] && [ -n "$APPLE_TEAM_ID_IN" ]; then { echo "APPLE_ID=$APPLE_ID_IN"; echo "APPLE_PASSWORD=$APPLE_PASSWORD_IN"; echo "APPLE_TEAM_ID=$APPLE_TEAM_ID_IN"; } >> "$GITHUB_ENV"; echo "signing + notarisation enabled"; else echo "signing enabled (no notarisation credentials)"; fi
+          else echo "no Apple signing secrets: building ad-hoc signed (unsigned for Gatekeeper)"; fi
 
       - name: Compile the local engine for ${{ matrix.target }}
         run: pnpm --filter @omniforge/desktop sidecar -- --target ${{ matrix.target }}

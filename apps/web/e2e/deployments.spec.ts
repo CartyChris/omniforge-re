@@ -96,3 +96,20 @@ test("GitHub pull request: denying the approval writes nothing", async ({ page }
   expect(gh.calls.some((c) => c.path.includes("/git/"))).toBe(false);
   noErrors(errors);
 });
+
+test("setup & diagnostics: real probes (GitHub token verified against the API), engine skipped in the web version, report downloadable", async ({ page }) => {
+  const errors = await prepare(page);
+  await fakeGitHub(page);
+  await page.goto("/#/integrations");
+  await page.getByLabel("Personal access token").fill("e2e-fake-token-not-real-0000");
+  await page.getByRole("button", { name: "Verify & save" }).first().click();
+  await expect(page.getByText("Connected as octo")).toBeVisible();
+  await page.getByRole("button", { name: "Run checks" }).click();
+  const list = page.getByTestId("health-checks");
+  await expect(list).toContainText("Token works (signed in as octo)");
+  await expect(list).toContainText("Web version");
+  await expect(list).toContainText("No provider connected");
+  const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Save report" }).click()]);
+  expect(dl.suggestedFilename()).toBe("omniforge-diagnostics.json");
+  noErrors(errors);
+});

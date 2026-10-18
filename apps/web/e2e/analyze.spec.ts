@@ -67,3 +67,27 @@ test("an interrupted analysis is recovered as 'interrupted', never lost", async 
   noErrors(errors.filter((e) => !/AbortError|ERR_ABORTED|net::/.test(e)));
   void context;
 });
+
+test("compare two investigations: choose from the list, see the evidence-derived differences", async ({ page }) => {
+  const errors = await prepare(page);
+  for (const url of ["http://127.0.0.1:4010/", "http://127.0.0.1:4010/about"]) {
+    await page.goto("/#/analyze");
+    await page.getByLabel(/Website URL, GitHub repository/).fill(url);
+    await page.getByRole("button", { name: /Analyze/ }).last().click();
+    await page.getByText("Open results").waitFor({ timeout: 90_000 });
+  }
+  await page.goto("/#/investigations");
+  const compare = page.getByRole("button", { name: /^Compare/ });
+  await expect(compare).toBeDisabled();
+  const boxes = page.getByRole("checkbox", { name: /to compare/ });
+  await boxes.nth(0).check(); await boxes.nth(1).check();
+  await compare.click();
+  await expect(page).toHaveURL(/investigations\/compare\?a=.+&b=.+/);
+  await expect(page.getByTestId("compare-totals")).toContainText("pages");
+  await expect(page.getByRole("heading", { name: "Stack" }).or(page.getByText("Stack", { exact: true })).first()).toBeVisible();
+  await expect(page.getByText(/overlap \d+%/).first()).toBeVisible();
+  // the Dashboard lists real activity only once something was built/deployed — none yet, so no empty card
+  await page.goto("/#/");
+  await expect(page.getByTestId("recent-activity")).toHaveCount(0);
+  noErrors(errors);
+});

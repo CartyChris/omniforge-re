@@ -11,6 +11,7 @@ const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const Analyze = lazy(() => import("@/pages/Analyze"));
 const RepoRip = lazy(() => import("@/pages/RepoRip"));
 const Investigations = lazy(() => import("@/pages/Investigations"));
+const CompareInvestigations = lazy(() => import("@/pages/CompareInvestigations"));
 const InvestigationDetail = lazy(() => import("@/pages/InvestigationDetail"));
 const Applications = lazy(() => import("@/pages/Applications"));
 const FeatureLibrary = lazy(() => import("@/pages/FeatureLibrary"));
@@ -41,6 +42,7 @@ export default function App() {
             <Route path="analyze" element={<Analyze />} />
             <Route path="repo-rip" element={<RepoRip />} />
             <Route path="investigations" element={<Investigations />} />
+            <Route path="investigations/compare" element={<CompareInvestigations />} />
             <Route path="investigations/:id" element={<InvestigationDetail />} />
             <Route path="applications" element={<Applications />} />
             <Route path="features" element={<FeatureLibrary />} />
