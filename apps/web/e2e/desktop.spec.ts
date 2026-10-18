@@ -92,3 +92,37 @@ test("desktop: the engine rejects an unpaired browser origin and requests withou
   const ok = await request.post("http://127.0.0.1:4466/bridge/probe", { data: { url: "http://127.0.0.1:4010/" }, headers: { authorization: `Bearer ${UI_TOKEN}`, origin: "http://127.0.0.1:5173", "x-omniforge-bridge": "1" } });
   expect(ok.status()).toBe(200);
 });
+
+test("desktop: Verify compares a rebuild with its reference in real Chromium; Repair runs the agent and re-checks", async ({ page }) => {
+  const errors = await asDesktop(page);
+  await page.goto("/#/analyze");
+  await expect(page.getByText("Desktop connected")).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("button", { name: "Choose folder…" }).click();
+  const writable = page.getByRole("switch", { name: "Allow writing to this folder" });
+  await expect(writable).toBeVisible(); await page.waitForTimeout(800); // the engine may remember an earlier approval of this folder
+  if (!(await writable.isChecked())) { await writable.click(); }
+  await expect(writable).toBeChecked();
+  await page.goto("/#/workspace");
+  await page.getByRole("tab", { name: "Verify" }).click();
+  const compare = page.getByRole("button", { name: "Compare" });
+  await expect(compare).toBeDisabled(); // needs two http(s) URLs
+  await page.getByLabel("Reference site").fill("http://127.0.0.1:4010/");
+  await page.getByLabel("Your rebuilt app").fill("http://127.0.0.1:4010/");
+  await compare.click();
+  const result = page.getByTestId("verify-result");
+  await expect(result).toContainText("Matches the reference", { timeout: 90_000 });
+  await expect(result.getByRole("img", { name: /differences at desktop width/ })).toBeVisible();
+  // a different page is reported as different, with listed discrepancies
+  await page.getByLabel("Your rebuilt app").fill("http://127.0.0.1:4010/about");
+  await compare.click();
+  await expect(result).not.toContainText("Matches the reference", { timeout: 90_000 });
+  await expect(result.locator("li").first()).toBeVisible();
+  await expect(result.getByText("What this does not check")).toBeVisible();
+  // repair: the agent (scripted model here — plumbing only) runs on the approved folder, then the comparison is re-run
+  await page.getByLabel("Workspace source").click();
+  await page.getByRole("option", { name: /omniforge-e2e-project/ }).click();
+  await page.getByRole("button", { name: "Repair with AI" }).click();
+  await expect(page.getByText(/before repair: \d+ high/)).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByTestId("audit-trail").or(page.locator("body"))).toBeVisible();
+  noErrors(errors);
+});

@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 // @ts-expect-error plain ESM fixture
 import { createFixture } from "../../../fixtures/server.mjs";
 import { startBridge, type Bridge } from "../src/bridge/server";
+import { findChrome } from "../src/bridge/render";
 
 let bridge: Bridge; let tmp: string; let fx: ReturnType<typeof createFixture>; let fxBase: string;
 const WEB = "https://omniforge.example";
@@ -175,6 +176,22 @@ describe("privileged capabilities through the bridge (desktop UI token)", () => 
     expect(inv.pages.length).toBe(12);
     expect(inv.files.map((f: any) => f.path).sort()).toEqual(["src/App.tsx", "src/api.ts"]);
   }, 60_000);
+
+  it("verifies a rebuild against a reference over the bridge: auth + input validation always; a real comparison when Chrome exists", async () => {
+    expect((await call("POST", "/bridge/verify", { origin: WEB, body: { reference: fxBase + "/", rebuilt: fxBase + "/" } })).status).toBe(401);
+    for (const bad of [{ reference: "file:///etc/passwd", rebuilt: fxBase + "/" }, { reference: fxBase + "/", rebuilt: "not a url" }, {}]) {
+      const r = await ui("POST", "/bridge/verify", bad); expect(r.status, JSON.stringify(bad)).toBeGreaterThanOrEqual(400); expect(r.status).toBeLessThan(500);
+    }
+    if (!findChrome()) return;
+    const same = await ui("POST", "/bridge/verify", { reference: fxBase + "/", rebuilt: fxBase + "/" });
+    expect(same.status).toBe(200);
+    expect(same.json.report.summary).toMatchObject({ status: "match", worstVisualRatio: 0 });
+    expect(Object.keys(same.json.images)).toEqual(["desktop", "mobile"]);
+    expect(same.json.images.desktop.diff).toMatch(/^data:image\/png;base64,/);
+    const other = await ui("POST", "/bridge/verify", { reference: fxBase + "/", rebuilt: fxBase + "/about" });
+    expect(other.json.report.summary.status).not.toBe("match");
+    expect(other.json.report.discrepancies.length).toBeGreaterThan(0);
+  }, 120_000);
 
   it("detects the REAL Claude Code CLI and lists it as usable (skipped if not installed)", async () => {
     const r = await ui("GET", "/bridge/cli");

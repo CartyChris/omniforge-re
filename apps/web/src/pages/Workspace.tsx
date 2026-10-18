@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
-import { Archive, Check, CheckCircle2, CircleAlert, CodeXml, Download, FolderGit2, GitBranch, Loader2, MonitorPlay, Rocket, Sparkles, SquareTerminal, TriangleAlert, X } from "lucide-react";
+import { Archive, Check, CheckCircle2, CircleAlert, CodeXml, Download, FolderGit2, GitBranch, Loader2, MonitorPlay, Rocket, ScanSearch, Sparkles, SquareTerminal, TriangleAlert, X } from "lucide-react";
 import { zipPackage } from "@omniforge/core";
 import { useApp } from "@/lib/store";
 import { listRoots, type RootInfo } from "@/lib/local";
@@ -12,12 +12,13 @@ import { Badge, Button, EmptyState, Segmented, Spinner } from "@/components/ui/p
 import { Select } from "@/components/ui/overlay";
 import { FileTree } from "@/components/workspace/FileTree";
 import { AIPanel, type Proposal } from "@/components/workspace/AIPanel";
+import { VerifyPanel } from "@/components/workspace/VerifyPanel";
 import { GitPanel, HistoryPanel, PreviewPanel, ProblemsPanel, TerminalPanel, TestsBar, useRunner, type Marker } from "@/components/workspace/Panels";
 
 const LazyEditor = lazy(async () => { await import("@/lib/monaco"); const m = await import("@/components/workspace/Editor"); return { default: m.CodeEditor }; });
 const LazyDiff = lazy(async () => { await import("@/lib/monaco"); const m = await import("@/components/workspace/Editor"); return { default: m.DiffView }; });
 
-type PanelId = "preview" | "terminal" | "git" | "problems" | "history" | "ai";
+type PanelId = "preview" | "terminal" | "git" | "problems" | "history" | "ai" | "verify";
 
 export default function Workspace() {
   const { project, bridge, bridgeState } = useApp(); const nav = useNavigate();
@@ -58,6 +59,7 @@ export default function Workspace() {
     { id: "preview", label: "Preview", icon: <MonitorPlay className="size-3.5" /> },
     { id: "ai", label: "AI", icon: <Sparkles className="size-3.5" />, badge: proposal ? 1 : undefined },
     { id: "terminal", label: "Terminal", icon: <SquareTerminal className="size-3.5" />, badge: runner.runs.filter((r) => r.state === "running").length || undefined },
+    { id: "verify", label: "Verify", icon: <ScanSearch className="size-3.5" /> },
     { id: "git", label: "Git", icon: <GitBranch className="size-3.5" /> },
     { id: "problems", label: "Problems", icon: <CircleAlert className="size-3.5" />, badge: markers.filter((m) => m.severity === "error").length || undefined },
     { id: "history", label: "History", icon: <Archive className="size-3.5" /> },
@@ -111,6 +113,7 @@ export default function Workspace() {
             {panel === "preview" && <PreviewPanel ws={ws} devUrl={devUrl} />}
             {panel === "ai" && <AIPanel path={active} content={current} markers={markers} onPropose={(p) => { setProposal(p); setCompare(null); setMobile("editor"); }} pending={!!proposal} focusSignal={aiFocus} />}
             {panel === "terminal" && <div className="flex h-full flex-col">{ws.rootId && <TestsBar ws={ws} runner={runner} />}<div className="min-h-0 flex-1"><TerminalPanel runner={runner} disabled={ws.rootId ? undefined : "Switch the workspace to a folder on your Mac to run installs, builds and tests. Commands only run in folders you approved."} /></div></div>}
+            {panel === "verify" && <VerifyPanel rootId={ws.rootId} devUrl={devUrl} />}
             {panel === "git" && <GitPanel rootId={ws.rootId} />}
             {panel === "problems" && <ProblemsPanel markers={markers.filter((m) => open.includes(m.path))} onJump={(m) => openFile(m.path)} />}
             {panel === "history" && <HistoryPanel ws={ws} compare={compare} onCompare={(id) => { setCompare(id); if (id && !active) toast.info("Open a file to see its diff"); }} />}

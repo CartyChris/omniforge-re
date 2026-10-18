@@ -5,7 +5,7 @@ import path from "node:path";
 
 export default defineConfig({
   plugins: [react(), tailwind()],
-  resolve: { alias: { "@": path.resolve(__dirname, "src") } },
+  resolve: { alias: { "@codesandbox/nodebox": path.resolve(__dirname, "src/lib/nodebox-stub.ts"), "@": path.resolve(__dirname, "src") } }, // Nodebox: licence forbids our use; see nodebox-stub.ts
   server: { port: 5173, proxy: { "/api": { target: "http://127.0.0.1:8787", changeOrigin: false } } },
   preview: { port: 5173, strictPort: true, proxy: { "/api": { target: "http://127.0.0.1:8787", changeOrigin: false } } },
   build: {

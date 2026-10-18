@@ -1,0 +1,26 @@
+{
+  "_comment": "Production dependencies must be under one of these SPDX licences (for 'A OR B' one allowed alternative is enough; 'A AND B' needs both). Anything else fails scripts/license-audit.mjs unless listed in 'exceptions' with a reason and, where the risk is shipping the code, a bundleMarker that must be ABSENT from the built bundle.",
+  "allowed": [
+    "MIT",
+    "ISC",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "0BSD",
+    "Apache-2.0",
+    "OFL-1.1",
+    "Unlicense",
+    "CC0-1.0",
+    "BlueOak-1.0.0",
+    "Python-2.0",
+    "W3C-20150513",
+    "W3C"
+  ],
+  "exceptions": [
+    {
+      "name": "@codesandbox/nodebox",
+      "license": "Unknown (Sustainable Use License)",
+      "reason": "Transitive dependency of @codesandbox/sandpack-client. Its licence limits use to internal-business or non-commercial purposes, so it is replaced by apps/web/src/lib/nodebox-stub.ts in the production bundle.",
+      "bundleMarker": "nodebox-runtime.codesandbox.io"
+    }
+  ]
+}

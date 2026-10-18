@@ -1,0 +1,72 @@
+spdx-correct | v3.2.0 pub 2023-03-07 (mod 2023-03-07, created 2015-04-29, 18v) | lic=Apache-2.0 | 23KB | deps=2 spdx-expression-parse,spdx-license-ids | opt=0  | inst=[] gyp=None | eng=None | dep= | git+https://github.com/jslicense/spdx-correct.js.git
+spdx-expression-parse | v5.0.0 pub 2026-07-16 (mod 2026-07-16, created 2015-08-02, 12v) | lic=MIT | 12KB | deps=2 spdx-exceptions,spdx-license-ids | opt=0  | inst=[] gyp=None | eng=None | dep= | git+https://github.com/jslicense/spdx-expression-parse.js.git
+spdx-license-ids | v3.0.24 pub 2026-09-17 (mod 2026-09-17, created 2015-05-02, 37v) | lic=CC0-1.0 | 14KB | deps=0  | opt=0  | inst=[] gyp=None | eng=None | dep= | git+https://github.com/jslicense/spdx-license-ids.git
+spdx-license-list | v6.12.0 pub 2026-07-24 (mod 2026-07-24, created 2014-08-05, 22v) | lic=CC0-1.0 | 10225KB | deps=0  | opt=0  | inst=[] gyp=None | eng={'node': '>=8'} | dep= | git+https://github.com/sindresorhus/spdx-license-list.git
+spdx-satisfies | v6.0.0 pub 2025-01-07 (mod 2025-01-07, created 2015-07-18, 9v) | lic=MIT | 7KB | deps=3 spdx-compare,spdx-expression-parse,spdx-ranges | opt=0  | inst=[] gyp=None | eng=None | dep= | git+https://github.com/kemitchell/spdx-satisfies.js.git
+spdx-exceptions | v2.5.0 pub 2024-02-15 (mod 2024-02-15, created 2015-08-01, 12v) | lic=CC-BY-3.0 | 3KB | deps=0  | opt=0  | inst=[] gyp=None | eng=None | dep= | git+https://github.com/kemitchell/spdx-exceptions.json.git
+spdx-compare | v1.0.0 pub 2018-03-07 (mod 2022-06-26, created 2015-07-18, 3v) | lic=MIT | 4KB | deps=3 array-find-index,spdx-expression-parse,spdx-ranges | opt=0  | inst=[] gyp=None | eng=None | dep= | git+https://github.com/kemitchell/spdx-compare.js.git
+spdx-ranges | v2.1.1 pub 2019-08-08 (mod 2022-06-26, created 2015-08-01, 5v) | lic=(MIT AND CC-BY-3.0) | 6KB | deps=0  | opt=0  | inst=[] gyp=None | eng=None | dep= | git+https://github.com/kemitchell/spdx-ranges.js.git
+@spdx/spdx-license-list | ERR HTTP Error 404: Not Found
+@spdx/tools-js | ERR HTTP Error 404: Not Found
+@spdx/spdx-java | ERR HTTP Error 404: Not Found
+license-checker | v25.0.1 pub 2019-01-10 (mod 2022-06-19, created 2013-01-14, 74v) | lic=BSD-3-Clause | 141KB | deps=10 chalk,debug,mkdirp,nopt,read-installed,semver,spdx-correct,spdx-expression-parse | opt=0  | inst=[] gyp=None | eng=None | dep= | git+ssh://git@github.com/davglass/license-checker.git
+license-checker-rseidelsohn | v5.0.1 pub 2026-05-27 (mod 2026-07-15, created 2020-02-24, 47v) | lic=BSD-3-Clause | 159KB | deps=12 nopt,chalk,debug,mkdirp,semver,treeify,spdx-correct,spdx-satisfies | opt=0  | inst=[] gyp=None | eng={'npm': '>=11', 'node': '>=24'} | dep= | git+https://github.com/RSeidelsohn/license-checker-rseidelsohn.git
+@onebeyond/license-checker | v2.2.0 pub 2026-01-22 (mod 2026-01-22, created 2023-06-26, 7v) | lic=MIT | 131KB | deps=8 chalk,is-ci,license-checker,lodash,spdx-expression-validate,spdx-license-ids,spdx-satisfies,yargs | opt=0  | inst=[] gyp=None | eng=None | dep= | git+https://github.com/onebeyond/license-checker.git
+licensee | v12.0.2 pub 2026-08-31 (mod 2026-08-31, created 2015-05-09, 42v) | lic=Apache-2.0 | 32KB | deps=10 @blueoak/list,@npmcli/arborist,correct-license-metadata,docopt,npm-license-corrections,semver,spdx-expression-parse,spdx-expression-validate | opt=0  | inst=[] gyp=None | eng={'node': '^20.20 || ^22.22 || ^24.13 || >= 25.4'} | dep= | git+https://github.com/jslicense/licensee.js.git
+license-classifier | ERR HTTP Error 404: Not Found
+license-detector | ERR HTTP Error 404: Not Found
+licensedetect | ERR HTTP Error 404: Not Found
+askalono | v0.0.1 pub 2018-11-27 (mod 2022-04-11, created 2018-11-27, 1v) | lic=Apache-2.0 | 3427KB | deps=0  | opt=0  | inst=[] gyp=None | eng=None | dep= | git+https://github.com/amzn/askalono.git
+askalono-wasm | ERR HTTP Error 404: Not Found
+@pivotal-licence-finder/.. | ERR HTTP Error 404: Not Found
+license-report | v6.8.6 pub 2026-10-09 (mod 2026-10-09, created 2014-07-27, 37v) | lic=MIT | 771KB | deps=11 rc,eol,got,ini,debug,semver,tablemark,text-table | opt=0  | inst=[] gyp=None | eng={'node': '>=20'} | dep= | git+https://github.com/bepo65/license-report.git
+nlf | v2.1.1 pub 2019-03-12 (mod 2022-06-21, created 2013-07-12, 35v) | lic=MIT | 38KB | deps=5 archy,commander,compare-versions,glob-all,snyk-resolve-deps | opt=0  | inst=[] gyp=None | eng={'node': '>=4'} | dep= | git://github.com/iandotkelly/nlf.git
+legally | v3.5.10 pub 2021-01-16 (mod 2022-06-19, created 2016-10-12, 41v) | lic=MIT | 79KB | deps=0  | opt=0  | inst=[] gyp=None | eng={'node': '>=10.0.0'} | dep= | git+https://github.com/franciscop/legally.git
+oss-license-name-to-spdx | ERR HTTP Error 404: Not Found
+spdx-license-diff | ERR HTTP Error 404: Not Found
+@iarna/license | ERR HTTP Error 404: Not Found
+@blakeembrey/license-detect | ERR HTTP Error 404: Not Found
+license-text-detect | ERR HTTP Error 404: Not Found
+@ls-lint/ls-lint | v2.3.2 pub 2026-10-17 (mod 2026-10-17, created 2020-03-13, 37v) | lic=MIT | 23509KB | deps=0  | opt=0  | inst=[] gyp=None | eng=None | dep= | git+https://github.com/loeffel-io/ls-lint.git
+@cyclonedx/cyclonedx-npm | v6.0.1 pub 2026-08-11 (mod 2026-08-11, created 2022-08-20, 69v) | lic=Apache-2.0 | 86KB | deps=6 @cyclonedx/cyclonedx-library,commander,normalize-package-data,packageurl-js,spdx-expression-parse,xmlbuilder2 | opt=4 ajv,ajv-formats,ajv-formats-draft2019,libxmljs2 | inst=[] gyp=None | eng={'node': '>=20.18.0', 'npm': '>=9'} | dep= | git+https://github.com/CycloneDX/cyclonedx-node-npm.git
+@cyclonedx/cdxgen | v12.8.6 pub 2026-10-14 (mod 2026-10-14, created 2023-02-07, 238v) | lic=Apache-2.0 | 13663KB | deps=29 ajv,tar,glob,ssri,yaml,yargs,semver,undici | opt=21 connect,jsonata,body-parser,compression | inst=[] gyp=None | eng={'node': '^20 || ^22 || ^24 || ^25 || ^26', 'pnpm': '>=10'} | dep= | git+https://github.com/cdxgen/cdxgen.git
+@cyclonedx/cyclonedx-library | v10.3.0 pub 2026-09-17 (mod 2026-09-17, created 2022-06-08, 120v) | lic=Apache-2.0 | 5125KB | deps=0  | opt=0  | inst=[] gyp=None | eng={'node': '>=20.18.0'} | dep= | git+https://github.com/CycloneDX/cyclonedx-javascript-library.git
+@cyclonedx/cyclonedx-node-npm | ERR HTTP Error 404: Not Found
+@appthreat/cdxgen | v7.0.5 pub 2023-02-02 (mod 2023-02-13, created 2019-12-31, 221v) | lic=Apache-2.0 | 421KB | deps=26 @babel/parser,@babel/traverse,cheerio,edn-data,glob,global-agent,got,js-yaml | opt=4 @appthreat/cdxgen-plugins-bin,connect,body-parser,compression | inst=[] gyp=None | eng={'node': '>=12.0.0'} | dep=DEPRECATED | git+https://github.com/AppThreat/cdxgen.git
+@cdxgen/cdxgen | v13.4.0 pub 2026-10-14 (mod 2026-10-14, created 2026-08-06, 7v) | lic=Apache-2.0 | 18378KB | deps=25 ajv,tar,glob,ssri,yaml,yargs,semver,undici | opt=21 connect,jsonata,body-parser,compression | inst=[] gyp=None | eng={'node': '>=24', 'pnpm': '>=12'} | dep= | git+https://github.com/cdxgen/cdxgen.git
+@cdxgen/cdxgen-plugins-bin | v4.1.1 pub 2026-10-06 (mod 2026-10-06, created 2026-01-03, 31v) | lic=MIT | 25KB | deps=0  | opt=0  | inst=[] gyp=None | eng=None | dep= | git+https://github.com/cdxgen/cdxgen-plugins-bin.git
+@appthreat/atom | v3.1.1 pub 2026-08-07 (mod 2026-08-07, created 2023-06-08, 147v) | lic=MIT | 30KB | deps=0  | opt=9 @appthreat/atom-darwin-amd64,@appthreat/atom-darwin-arm64,@appthreat/atom-jar,@appthreat/atom-linux-amd64 | inst=[] gyp=None | eng={'node': '>=18'} | dep= | git+https://github.com/AppThreat/atom.git
+secretlint | v13.0.7 pub 2026-10-03 (mod 2026-10-03, created 2020-02-16, 131v) | lic=MIT | 56KB | deps=8 debug,read-pkg,@secretlint/node,@secretlint/walker,@secretlint/profiler,@secretlint/resolver,@secretlint/formatter,@secretlint/config-creator | opt=0  | inst=[] gyp=None | eng={'node': '>=22.0.0'} | dep= | git+https://github.com/secretlint/secretlint.git
+@secretlint/core | v13.0.7 pub 2026-10-03 (mod 2026-10-03, created 2020-02-16, 123v) | lic=MIT | 113KB | deps=4 debug,@secretlint/types,structured-source,@secretlint/profiler | opt=0  | inst=[] gyp=None | eng={'node': '>=22.0.0'} | dep= | git+https://github.com/secretlint/secretlint.git
+@secretlint/secretlint-rule-preset-recommend | v13.0.7 pub 2026-10-03 (mod 2026-10-03, created 2020-02-16, 128v) | lic=MIT | 618KB | deps=0  | opt=0  | inst=[] gyp=None | eng={'node': '>=22.0.0'} | dep= | git+https://github.com/secretlint/secretlint.git
+@secretlint/node | v13.0.7 pub 2026-10-03 (mod 2026-10-03, created 2020-02-16, 126v) | lic=MIT | 25KB | deps=8 debug,p-map,@secretlint/core,@secretlint/types,@secretlint/profiler,@secretlint/formatter,@secretlint/config-loader,@secretlint/source-creator | opt=0  | inst=[] gyp=None | eng={'node': '>=22.0.0'} | dep= | git+https://github.com/secretlint/secretlint.git
+secretlint-rule-preset-recommend | ERR HTTP Error 404: Not Found
+gitleaks | v1.0.0 pub 2020-04-21 (mod 2022-05-03, created 2020-04-21, 1v) | lic=ISC | 6KB | deps=0  | opt=0  | inst=[] gyp=None | eng=None | dep= | git+https://github.com/ycjcl868/gitleaks.git
+@gitleaks/gitleaks | ERR HTTP Error 404: Not Found
+trufflehog | v0.0.5 pub 2020-05-02 (mod 2022-05-22, created 2020-04-30, 5v) | lic=MIT | 14KB | deps=7 @koa/router,chalk,dotenv,inquirer,koa,koa-bodyparser,koa-logger | opt=0  | inst=[] gyp=None | eng=None | dep= | git+https://github.com/codynova/trufflehog.git
+@trufflesecurity/trufflehog | ERR HTTP Error 404: Not Found
+@google/osv-scanner | ERR HTTP Error 404: Not Found
+osv-scanner | ERR HTTP Error 404: Not Found
+@osv/.. | ERR HTTP Error 404: Not Found
+retire | v6.1.0 pub 2026-10-06 (mod 2026-10-06, created 2013-10-29, 153v) | lic=Apache-2.0 | 126KB | deps=4 zod,walkdir,commander,astronomical | opt=0  | inst=[] gyp=None | eng={'node': '^20.19.0 || >=22.12.0'} | dep= | git+https://github.com/RetireJS/retire.js.git
+audit-ci | v7.1.0 pub 2024-07-03 (mod 2024-07-03, created 2018-11-15, 53v) | lic=Apache-2.0 | 441KB | deps=9 cross-spawn,escape-string-regexp,event-stream,jju,jsonstream-next,readline-transform,semver,tslib | opt=0  | inst=[] gyp=None | eng={'node': '>=16'} | dep= | git+ssh://git@github.com/IBM/audit-ci.git
+better-npm-audit | v3.11.0 pub 2024-09-09 (mod 2024-09-09, created 2018-12-12, 70v) | lic=MIT | 44KB | deps=5 commander,dayjs,lodash.get,semver,table | opt=0  | inst=[] gyp=None | eng={'node': '>= 8.12'} | dep= | git+https://github.com/jeemok/better-npm-audit.git
+snyk | v1.1308.1 pub 2026-10-14 (mod 2026-10-16, created 2015-07-22, 2132v) | lic=Apache-2.0 | 46972KB | deps=4 roarr,boolean,@sentry/node,global-agent | opt=0  | inst=['postinstall'] gyp=None | eng={'node': '>=12'} | dep= | git+https://github.com/snyk/snyk.git
+@socketsecurity/cli | v1.8.4 pub 2026-10-16 (mod 2026-10-16, created 2022-11-07, 515v) | lic=MIT | 22550KB | deps=2 form-data,@socketsecurity/socket-patch | opt=0  | inst=[] gyp=None | eng={'node': '>=18.20.8', 'pnpm': '>=10.33.0'} | dep= | git+https://github.com/SocketDev/socket-cli.git
+@socketsecurity/lib | v7.1.0 pub 2026-10-08 (mod 2026-10-08, created 2025-10-19, 158v) | lic=MIT | 14327KB | deps=0  | opt=0  | inst=[] gyp=None | eng={'npm': '^11.19.0 || >=12.0.2', 'node': '>=24', 'pnpm': '^11.25.0 || >=12.3.4'} | dep= | git+https://github.com/SocketDev/socket-lib.git
+npm-check-updates | v23.1.1 pub 2026-10-10 (mod 2026-10-10, created 2013-09-07, 537v) | lic=Apache-2.0 | 5430KB | deps=0  | opt=0  | inst=[] gyp=None | eng={'npm': '>=10.0.0', 'node': '^22.22.2 || ^24.15.0 || >=26.0.0'} | dep= | git+https://github.com/raineorshine/npm-check-updates.git
+depcheck | v1.4.7 pub 2023-10-17 (mod 2025-08-31, created 2013-09-20, 53v) | lic=MIT | 225KB | deps=23 debug,json5,yargs,ignore,lodash,semver,js-yaml,resolve | opt=0  | inst=[] gyp=None | eng={'node': '>=10'} | dep= | git://github.com/depcheck/depcheck.git
+knip | v6.42.0 pub 2026-10-18 (mod 2026-10-18, created 2022-10-09, 629v) | lic=ISC | 2037KB | deps=12 zod,jiti,yaml,unbash,formatly,picomatch,smol-toml,oxc-parser | opt=0  | inst=[] gyp=None | eng={'node': '^20.19.0 || >=22.12.0'} | dep= | git+https://github.com/webpro-nl/knip.git
+syft | ERR HTTP Error 404: Not Found
+grype | ERR HTTP Error 404: Not Found
+trivy | ERR HTTP Error 404: Not Found
+@aquasecurity/trivy | ERR HTTP Error 404: Not Found
+@sbom/.. | ERR HTTP Error 404: Not Found
+packageurl-js | v2.0.1 pub 2024-09-04 (mod 2024-09-04, created 2018-08-17, 16v) | lic=MIT | 56KB | deps=0  | opt=0  | inst=[] gyp=None | eng=None | dep= | git+https://github.com/package-url/packageurl-js.git
+packageurl | ERR HTTP Error 404: Not Found
+@mongodb-js/.. | ERR HTTP Error 404: Not Found
+spdx-license-list-data | ERR HTTP Error 404: Not Found
+check-licenses | v1.1.1 pub 2026-05-02 (mod 2026-05-02, created 2020-12-04, 13v) | lic=MIT | 77KB | deps=4 atocha,chalk,files,meow | opt=0  | inst=[] gyp=None | eng={'node': '>=12.17.0'} | dep= | git+https://github.com/franciscop/check-licenses.git
+license-webpack-plugin | v4.0.2 pub 2022-02-10 (mod 2022-06-19, created 2016-07-02, 80v) | lic=ISC | 107KB | deps=1 webpack-sources | opt=0  | inst=[] gyp=None | eng=None | dep= | git+ssh://git@github.com/xz64/license-webpack-plugin.git
+rollup-plugin-license | v3.7.1 pub 2026-04-09 (mod 2026-04-09, created 2016-11-25, 51v) | lic=MIT | 362KB | deps=8 commenting,fdir,lodash,magic-string,moment,package-name-regex,spdx-expression-validate,spdx-satisfies | opt=0  | inst=[] gyp=None | eng={'node': '>=14.0.0'} | dep= | git+https://github.com/mjeanroy/rollup-plugin-license.git
+@vercel/nft | v1.11.0 pub 2026-08-18 (mod 2026-08-18, created 2020-08-12, 89v) | lic=MIT | 347KB | deps=12 glob,acorn,bindings,picomatch,async-sema,graceful-fs,resolve-from,estree-walker | opt=0  | inst=[] gyp=None | eng={'node': '>=20'} | dep= | git+https://github.com/vercel/nft.git

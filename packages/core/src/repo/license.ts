@@ -7,7 +7,7 @@
  * one) are "all rights reserved" by default: the user must attest to having
  * the right before anything is copied.
  */
-export type LicenseClass = "permissive" | "weak-copyleft" | "strong-copyleft" | "network-copyleft" | "public-domain" | "proprietary" | "none" | "unknown";
+export type LicenseClass = "permissive" | "weak-copyleft" | "strong-copyleft" | "network-copyleft" | "public-domain" | "source-available" | "proprietary" | "none" | "unknown";
 
 export interface LicenseInfo {
   spdx: string; // SPDX id, "NONE" or "UNKNOWN"
@@ -16,16 +16,32 @@ export interface LicenseInfo {
   evidence?: string;
 }
 
-interface Sig { spdx: string; class: LicenseClass; test: RegExp[] }
+/**
+ * `title` patterns are matched against the first ~1,500 characters only: a licence is identified by its own heading, not by other licences it
+ * quotes (the MPL names the GPL as a secondary licence; the FSL names Apache/MIT as its future licence; the GPL names the AGPL in section 13).
+ * Title signatures come first and are ordered most-specific first. `test` patterns run on the first 20,000 characters.
+ */
+interface Sig { spdx: string; class: LicenseClass; title?: RegExp[]; test?: RegExp[] }
 
 const SIGS: Sig[] = [
-  { spdx: "AGPL-3.0", class: "network-copyleft", test: [/GNU AFFERO GENERAL PUBLIC LICENSE/i, /Version 3/i] },
-  { spdx: "LGPL-3.0", class: "weak-copyleft", test: [/GNU LESSER GENERAL PUBLIC LICENSE/i, /Version 3/i] },
-  { spdx: "LGPL-2.1", class: "weak-copyleft", test: [/GNU LESSER GENERAL PUBLIC LICENSE/i, /Version 2\.1/i] },
-  { spdx: "GPL-3.0", class: "strong-copyleft", test: [/GNU GENERAL PUBLIC LICENSE/i, /Version 3/i] },
-  { spdx: "GPL-2.0", class: "strong-copyleft", test: [/GNU GENERAL PUBLIC LICENSE/i, /Version 2/i] },
-  { spdx: "MPL-2.0", class: "weak-copyleft", test: [/Mozilla Public License,? Version 2\.0/i] },
-  { spdx: "EPL-2.0", class: "weak-copyleft", test: [/Eclipse Public License - v 2\.0/i] },
+  // source-available: readable, but NOT open source — use is restricted (competing use, commercial use, production use…)
+  { spdx: "FSL-1.1-Apache-2.0", class: "source-available", title: [/Functional Source License,? Version 1\.1,? Apache 2\.0 Future License/i] },
+  { spdx: "FSL-1.1-MIT", class: "source-available", title: [/Functional Source License,? Version 1\.1,? MIT Future License/i] },
+  { spdx: "LicenseRef-MSCL", class: "source-available", title: [/Monospace Sustainable Core License/i] },
+  { spdx: "LicenseRef-Sustainable-Use", class: "source-available", title: [/^\s*Sustainable Use License/i] },
+  { spdx: "Elastic-2.0", class: "source-available", title: [/^\s*Elastic License 2\.0/i] },
+  { spdx: "BUSL-1.1", class: "source-available", title: [/^\s*Business Source License/i] },
+  { spdx: "SSPL-1.0", class: "source-available", title: [/^\s*Server Side Public License/i] },
+  { spdx: "LicenseRef-PolyForm", class: "source-available", title: [/^\s*PolyForm /i] },
+  { spdx: "LicenseRef-Commons-Clause", class: "source-available", title: [/"?Commons Clause"? License Condition/i] },
+  // copyleft families, by heading
+  { spdx: "AGPL-3.0", class: "network-copyleft", title: [/GNU AFFERO GENERAL PUBLIC LICENSE/i, /Version 3/i] },
+  { spdx: "LGPL-3.0", class: "weak-copyleft", title: [/GNU LESSER GENERAL PUBLIC LICENSE/i, /Version 3/i] },
+  { spdx: "LGPL-2.1", class: "weak-copyleft", title: [/GNU LESSER GENERAL PUBLIC LICENSE/i, /Version 2\.1/i] },
+  { spdx: "GPL-3.0", class: "strong-copyleft", title: [/GNU GENERAL PUBLIC LICENSE/i, /Version 3/i] },
+  { spdx: "GPL-2.0", class: "strong-copyleft", title: [/GNU GENERAL PUBLIC LICENSE/i, /Version 2/i] },
+  { spdx: "MPL-2.0", class: "weak-copyleft", title: [/Mozilla Public License,? Version 2\.0/i] },
+  { spdx: "EPL-2.0", class: "weak-copyleft", title: [/Eclipse Public License - v 2\.0/i] },
   { spdx: "Apache-2.0", class: "permissive", test: [/Apache License/i, /Version 2\.0/i] },
   { spdx: "BSL-1.0", class: "permissive", test: [/Boost Software License/i] },
   { spdx: "Unlicense", class: "public-domain", test: [/This is free and unencumbered software released into the public domain/i] },
@@ -36,11 +52,10 @@ const SIGS: Sig[] = [
   { spdx: "BSD-3-Clause", class: "permissive", test: [/Redistribution and use in source and binary forms/i, /Neither the name of/i] },
   { spdx: "BSD-2-Clause", class: "permissive", test: [/Redistribution and use in source and binary forms/i] },
   { spdx: "Zlib", class: "permissive", test: [/This software is provided 'as-is', without any express or implied warranty/i] },
-  { spdx: "CC-BY-4.0", class: "permissive", test: [/Creative Commons Attribution 4\.0/i] },
+  { spdx: "CC-BY-NC-SA-4.0", class: "source-available", test: [/Attribution-NonCommercial-ShareAlike 4\.0/i] },
+  { spdx: "CC-BY-NC-4.0", class: "source-available", test: [/Attribution-NonCommercial/i] },
   { spdx: "CC-BY-SA-4.0", class: "strong-copyleft", test: [/Creative Commons Attribution-ShareAlike 4\.0/i] },
-  { spdx: "CC-BY-NC-4.0", class: "proprietary", test: [/Attribution-NonCommercial/i] },
-  { spdx: "SSPL-1.0", class: "network-copyleft", test: [/Server Side Public License/i] },
-  { spdx: "BUSL-1.1", class: "proprietary", test: [/Business Source License/i] },
+  { spdx: "CC-BY-4.0", class: "permissive", test: [/Creative Commons Attribution 4\.0/i] },
 ];
 
 const CLASS_BY_SPDX = new Map(SIGS.map((s) => [s.spdx, s.class]));
@@ -55,8 +70,11 @@ export function classifySpdx(id: string): LicenseClass {
 }
 
 export function detectLicenseText(text: string): { spdx: string; class: LicenseClass } | null {
-  const t = text.slice(0, 20_000);
-  for (const s of SIGS) if (s.test.every((re) => re.test(t))) return { spdx: s.spdx, class: s.class };
+  const t = text.slice(0, 20_000).replace(/\s+/g, " "); // line-wrapped / re-indented copies of a licence are still that licence
+  const head = t.slice(0, 1_500);
+  for (const s of SIGS) {
+    if (s.title ? s.title.every((re) => re.test(head)) : s.test!.every((re) => re.test(t))) return { spdx: s.spdx, class: s.class };
+  }
   return null;
 }
 
@@ -93,7 +111,7 @@ export function detectLicense(files: { path: string; content?: string }[], hint?
 }
 
 /** The effective licence: the most restrictive of those detected (conservative). */
-const RESTRICT: LicenseClass[] = ["public-domain", "permissive", "weak-copyleft", "strong-copyleft", "network-copyleft", "unknown", "proprietary", "none"];
+const RESTRICT: LicenseClass[] = ["public-domain", "permissive", "weak-copyleft", "strong-copyleft", "network-copyleft", "unknown", "source-available", "proprietary", "none"];
 export function effective(licenses: LicenseInfo[]): LicenseInfo {
   // A repo that has a recognised licence file beats a bare metadata hint; otherwise take the most restrictive.
   const recognised = licenses.filter((l) => l.class !== "unknown" && l.class !== "none");
@@ -117,6 +135,7 @@ const OBLIGATIONS: Record<LicenseClass, string[]> = {
   "weak-copyleft": ["Keep notices. Modifications to the licensed files themselves must be shared under the same licence; linking from a larger work is generally allowed."],
   "strong-copyleft": ["Keep notices. A work that copies or is derived from this code must be released under the same licence (source available) when distributed."],
   "network-copyleft": ["Keep notices. Derived work must be released under the same licence, INCLUDING when users only interact with it over a network (e.g. a hosted web app)."],
+  "source-available": ["Source-available, NOT open source: the code can be read but its use is restricted (for example no competing use, no commercial or production use). Read the licence; do not copy or adapt it unless it allows your use or you have the owner's permission."],
   proprietary: ["Not open-source. Copying or adapting is not permitted without the owner's permission."],
   none: ["No licence is published: by default all rights are reserved and you have no permission to copy or adapt it unless you own it or have the owner's permission."],
   unknown: ["The licence could not be identified automatically. Read the licence file before copying or adapting."],
@@ -129,8 +148,8 @@ export function assessRip(repos: { repo: string; licenses: LicenseInfo[] }[], pu
   const classes = perRepo.map((p) => p.license.class);
   const messages: string[] = [];
   const conflicts: string[] = [];
-  const requiresAttestation = classes.some((c) => c === "none" || c === "proprietary" || c === "unknown");
-  for (const p of perRepo) if (p.license.class === "none" || p.license.class === "proprietary" || p.license.class === "unknown") messages.push(`${p.repo}: ${p.license.spdx} — ${OBLIGATIONS[p.license.class][0]}`);
+  const requiresAttestation = classes.some((c) => c === "none" || c === "proprietary" || c === "unknown" || c === "source-available");
+  for (const p of perRepo) if (p.license.class === "none" || p.license.class === "proprietary" || p.license.class === "unknown" || p.license.class === "source-available") messages.push(`${p.repo}: ${p.license.spdx} — ${OBLIGATIONS[p.license.class][0]}`);
   const spdx = perRepo.map((p) => p.license.spdx);
   const has = (c: LicenseClass) => classes.includes(c);
   if (has("strong-copyleft") || has("network-copyleft")) {
@@ -155,5 +174,5 @@ export class RightsError extends Error {}
 
 /** Throws unless the user attested (when required). Conflicts are reported but not blocking: they inform the license choice. */
 export function assertCanRip(a: Assessment, attested: boolean) {
-  if (a.requiresAttestation && !attested) throw new RightsError("This repository has no usable open-source licence. Confirm that you own it or have the owner's permission to copy or adapt it, then try again.");
+  if (a.requiresAttestation && !attested) throw new RightsError("This repository has no usable open-source licence (none, unknown, proprietary or source-available). Confirm that you own it or have the owner's permission to copy or adapt it, then try again.");
 }

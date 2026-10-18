@@ -40,3 +40,6 @@ export * from "./integrations/osv.js";
 export * from "./analyze/sourceInvestigation.js";
 export * from "./analyze/artifacts.js";
 export * from "./analyze/compare.js";
+export * from "./verify/structure.js";
+export * from "./preview/sandpack.js";
+export * from "./verify/report.js";

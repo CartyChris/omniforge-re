@@ -28,5 +28,11 @@ Decisions, what was tried, what failed. Newest last. See FEATURES.md for the sta
 ## Result of the closing CI runs
 - GitHub Actions on `022d77b`: unit + typecheck + cargo check + **44 e2e passed**. macOS workflow on `7646af1`: both architectures built (Rust compiled on macOS for the first time — the `cfg(macOS)` Keychain code compiled without changes), bundle verification and the arm64 launch smoke test passed.
 
+## Integration research and first integrations
+- Five parallel research passes (web capture/deobfuscation, code & binary analysis, MCP, agents/skills/memory/RAG, generation/verification/deploy/compliance) → `docs/integration-research.md` + `docs/research/`. Everything is labelled tested / checked / read-only; nothing was run on macOS or Vercel.
+- The report's sharpest finding was about our own code, not new tools: the licence detector misclassified source-available texts as permissive, and the preview used a non-commercial runtime (Nodebox). Both fixed first, each with a red-then-green test on real licence texts and a mutation check.
+- Compare engine: `packages/core/src/verify` (structure diff, severity, repair brief fenced as untrusted) + `packages/server/src/verify.ts` (pixelmatch/pngjs, region clustering) + `/bridge/verify` + Workspace **Verify** panel. Found while testing: Playwright `clip` is limited to the viewport unless `fullPage` is set (tall pages were silently cropped); identical pages still reported "console errors" because the fixture site logs its own — now only errors the reference does not also produce are blamed on the rebuild.
+- Test-suite lesson repeated: `toMatchObject({ x: /re/ })` passes vacuously in vitest; use `expect.stringMatching`.
+
 ## Known gaps / not done
 See FEATURES.md rows marked N or P. Blocked by environment: Vercel deploy to the user's account (connector bound to another team); Apple signing (no certificate); live cloud-model and OSV.dev calls (no keys / egress).

@@ -20,6 +20,7 @@ import { JobManager } from "./jobs.js";
 import { inspectPath } from "./package.js";
 import { applyReaInstall, planReaInstall, ReaJobs, REA_OPS, reaStatus, reaSummary, reaToInvestigation } from "./rea.js";
 import { findChrome, PlaywrightRenderer } from "./render.js";
+import { verifyUrls } from "./verify.js";
 
 export interface BridgeOptions { port?: number; uiToken?: string; version?: string; allowedOrigins?: string[]; jobsDir?: string; reaDir?: string }
 export interface Bridge { url: string; port: number; auth: BridgeAuth; roots: Roots; jobs: JobManager; close(): Promise<void> }
@@ -176,6 +177,7 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
 
     /* ---- browser rendering + full local analysis ---- */
     if (is("GET", "/bridge/render/status")) { need(p, "render"); const c = findChrome(); return json({ available: !!c, path: c }); }
+    if (is("POST", "/bridge/verify")) { need(p, "render"); const b = await readJson(req, 4000); return json(await verifyUrls(getRenderer(), b.reference, b.rebuilt)); }
     if (is("POST", "/bridge/probe")) { need(p, "analyze"); return probeHandler(req, { mode: "local" }); }
     if (is("POST", "/bridge/analyze")) {
       need(p, "analyze");

@@ -96,6 +96,31 @@ export class PlaywrightRenderer implements Renderer {
     }
   }
 
+  /**
+   * Capture a page for reference-vs-rebuild verification: lossless PNG at a fixed viewport with animations frozen, plus the rendered HTML.
+   * Same SSRF/scope policy as render(); `allowPrivate` is needed for a rebuild served from localhost.
+   */
+  async capture(url: string, o: { width: number; height: number; fullPage?: boolean; maxHeight?: number }): Promise<{ png: Buffer; html: string; finalUrl: string; consoleErrors: string[] }> {
+    await this.start();
+    const ctx = await this.browser!.newContext({ viewport: { width: o.width, height: o.height }, acceptDownloads: false, serviceWorkers: "block", javaScriptEnabled: true, permissions: [], locale: "en-US", reducedMotion: "reduce", deviceScaleFactor: 1 });
+    const allowPrivate = !!this.o.allowPrivate; const consoleErrors: string[] = [];
+    await ctx.route("**/*", async (route) => { const u = route.request().url(); try { if (/^https?:/i.test(u)) validateUrl(u, { allowPrivate }); return route.continue(); } catch { return route.abort("blockedbyclient"); } });
+    const page = await ctx.newPage();
+    page.on("console", (m) => { if (m.type() === "error" && consoleErrors.length < 10) consoleErrors.push(m.text().slice(0, 200)); });
+    page.on("pageerror", (e) => { if (consoleErrors.length < 10) consoleErrors.push(`pageerror: ${e.message.slice(0, 200)}`); });
+    page.on("dialog", (d) => d.dismiss().catch(() => {})); page.on("download", (d) => d.cancel().catch(() => {}));
+    try {
+      await page.goto(url, { waitUntil: "networkidle", timeout: this.o.navTimeoutMs ?? 30_000 }).catch(async () => { await page.waitForLoadState("domcontentloaded", { timeout: 5000 }).catch(() => {}); });
+      await page.addStyleTag({ content: "*,*::before,*::after{animation:none!important;transition:none!important;caret-color:transparent!important;scroll-behavior:auto!important}" }).catch(() => {});
+      await page.evaluate(() => (document as Document & { fonts?: { ready: Promise<unknown> } }).fonts?.ready).catch(() => {});
+      const h = await page.evaluate(() => document.documentElement.scrollHeight).catch(() => o.height);
+      const clipH = Math.min(h, o.maxHeight ?? 6000);
+      // fullPage + clip: the clip is relative to the whole document, so very tall pages are cut at maxHeight instead of capturing everything
+      const png = await page.screenshot({ type: "png", fullPage: o.fullPage !== false, clip: o.fullPage === false ? undefined : { x: 0, y: 0, width: o.width, height: Math.max(1, clipH) } });
+      return { png, html: await page.content(), finalUrl: page.url(), consoleErrors };
+    } finally { await ctx.close().catch(() => {}); }
+  }
+
   private async interact(page: Page, out: RenderResult["interactions"], scopeCheck: (u: string) => boolean, max: number) {
     const before = async () => page.evaluate(() => ({ dialogs: document.querySelectorAll('dialog[open],[role="dialog"],[aria-modal="true"]').length, expanded: document.querySelectorAll('[aria-expanded="true"]').length, text: document.body.innerText.length, url: location.href }));
     // 1. lazy-load / infinite scroll (bounded)
