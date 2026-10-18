@@ -28,7 +28,52 @@ export function commandRuleProblem(cmd: string): string | null {
   return null;
 }
 
-export interface ClaudeAgentOptions { model?: string; allowedCommands?: string[]; maxBudgetUsd?: number }
+/** An MCP server the user lets the agent use for one run. stdio servers are processes started on this Mac as the user (not sandboxed); http servers receive whatever the agent sends them. */
+export type McpServerSpec = { name: string; command: string; args?: string[] } | { name: string; url: string };
+
+const MCP_NAME = /^[a-z][a-z0-9-]{0,29}$/; // no "_": "__" separates server and tool in permission rules
+const BAD_LAUNCHER = /^(?:sudo|su|rm|dd|mkfs|chmod|chown|curl|wget|ssh|scp|nc|bash|sh|zsh|fish|dash|ksh|csh|tcsh|cmd|powershell|pwsh|eval|exec|env|xargs|osascript|open)$/;
+
+export function mcpServerProblem(s: McpServerSpec): string | null {
+  if (!s || typeof s !== "object" || typeof s.name !== "string" || !MCP_NAME.test(s.name)) return "Server names are 1–30 characters: lowercase letters, digits and “-”, starting with a letter.";
+  if ("url" in s) {
+    let u: URL; try { u = new URL(s.url); } catch { return "The address is not a valid URL."; }
+    if (s.url.length > 300) return "The address is too long.";
+    if (u.username || u.password) return "Put no credentials in the address.";
+    const loop = /^(?:localhost|127\.0\.0\.1|\[::1\])$/.test(u.hostname);
+    if (u.protocol !== "https:" && !(u.protocol === "http:" && loop)) return "Only https:// addresses (or http:// on this computer) are allowed.";
+    return null;
+  }
+  if (typeof s.command !== "string" || !/^[A-Za-z0-9_./@+:-]{1,200}$/.test(s.command)) return "The command must be a single program name or path (letters, digits and . / _ @ + : -), with arguments listed separately.";
+  const base = s.command.split("/").pop()!;
+  if (BAD_LAUNCHER.test(base)) return `“${base}” cannot be used to launch a server (shells, privilege and network tools are not allowed).`;
+  const args = s.args ?? [];
+  if (!Array.isArray(args) || args.length > 20) return "At most 20 arguments.";
+  for (const a of args) {
+    if (typeof a !== "string" || a.length > 200 || /[\u0000-\u001f]/.test(a)) return "Arguments must be short single-line text.";
+  }
+  if (/^(?:node|nodejs|bun|deno|python[0-9.]*|ruby|perl|php)$/.test(base) && args.some((a) => /^(?:-e|-c|--eval|--print|-p|-r|--require)$/.test(a))) return "Inline code flags (-e, -c, --eval…) are not allowed; point the server at a script file instead.";
+  return null;
+}
+
+/** The `--mcp-config` document Claude Code reads. */
+export function mcpConfigJson(servers: McpServerSpec[]): string {
+  const out: Record<string, unknown> = {};
+  for (const s of servers) { const p = mcpServerProblem(s); if (p) throw new Error(`MCP server “${s?.name}”: ${p}`); out[s.name] = "url" in s ? { type: "http", url: s.url } : { command: s.command, ...(s.args?.length ? { args: s.args } : {}) }; }
+  return JSON.stringify({ mcpServers: out });
+}
+
+/** One-line, untruncated description for consent dialogs and logs. */
+export const describeMcpServer = (s: McpServerSpec): string => ("url" in s ? `${s.name}: ${s.url}` : `${s.name}: ${[s.command, ...(s.args ?? [])].join(" ")}`);
+
+/** Servers that are well known and open source. Versions are pinned so a later registry release cannot change what runs. */
+export const MCP_PRESETS: { id: string; label: string; blurb: string; leaves: string; server: McpServerSpec }[] = [
+  { id: "chrome-devtools", label: "Chrome DevTools", blurb: "Inspect a live page: network, console, performance, accessibility (Apache-2.0).", leaves: "Drives a Chrome on this Mac; statistics and CrUX lookups are switched off.", server: { name: "chrome-devtools", command: "npx", args: ["-y", "chrome-devtools-mcp@1.11.0", "--isolated", "--no-usage-statistics", "--no-performance-crux"] } },
+  { id: "playwright", label: "Playwright", blurb: "Browse and interact with pages the way a user would (Apache-2.0).", leaves: "Its own README says it is not a security boundary.", server: { name: "playwright", command: "npx", args: ["-y", "@playwright/mcp@0.0.83"] } },
+  { id: "context7", label: "Context7 docs", blurb: "Current library documentation lookup (MIT).", leaves: "Library names you ask about are sent to Context7's hosted service.", server: { name: "context7", command: "npx", args: ["-y", "@upstash/context7-mcp@4.4.2"] } },
+];
+
+export interface ClaudeAgentOptions { model?: string; allowedCommands?: string[]; maxBudgetUsd?: number; mcpServers?: McpServerSpec[]; /** where the host wrote `mcpConfigJson(mcpServers)` (required when mcpServers is non-empty) */ mcpConfigPath?: string }
 
 /**
  * Arguments for `claude`. The prompt goes through stdin. Verified against Claude Code 2.1.302 with a project that ships a PreToolUse hook:
@@ -39,11 +84,17 @@ export function claudeAgentArgs(o: ClaudeAgentOptions = {}): string[] {
   const cmds = (o.allowedCommands ?? []).map((c) => c.trim()).filter(Boolean);
   for (const c of cmds) { const p = commandRuleProblem(c); if (p) throw new Error(`Command “${c}”: ${p}`); }
   const tools = [...BASE_TOOLS, ...(cmds.length ? ["Bash"] : [])];
+  const mcp = o.mcpServers ?? [];
+  if (mcp.length > 8) throw new Error("At most 8 MCP servers per run.");
+  for (const m of mcp) { const p = mcpServerProblem(m); if (p) throw new Error(`MCP server “${m?.name}”: ${p}`); }
+  if (new Set(mcp.map((m) => m.name)).size !== mcp.length) throw new Error("MCP server names must be unique.");
+  if (mcp.length && !o.mcpConfigPath) throw new Error("MCP servers need a config file path.");
   return [
     "-p", "--output-format", "stream-json", "--verbose", "--no-session-persistence",
     "--setting-sources", "user", "--strict-mcp-config", "--permission-mode", "acceptEdits",
     "--tools", tools.join(","),
-    "--allowedTools", [...BASE_TOOLS, ...cmds.map((c) => `Bash(${c}:*)`)].join(","),
+    "--allowedTools", [...BASE_TOOLS, ...cmds.map((c) => `Bash(${c}:*)`), ...mcp.map((m) => `mcp__${m.name}`)].join(","),
+    ...(mcp.length ? ["--mcp-config", o.mcpConfigPath!] : []),
     ...(o.model ? ["--model", o.model] : []),
     ...(o.maxBudgetUsd ? ["--max-budget-usd", String(o.maxBudgetUsd)] : []),
     "--append-system-prompt", AGENT_SYSTEM_PROMPT,
@@ -69,7 +120,7 @@ function toolSummary(name: string, input: Record<string, unknown> | undefined): 
     case "Bash": return { summary: `Run: ${clip(String(i.command ?? ""), 100)}` };
     case "Glob": return { summary: `Find files: ${clip(String(i.pattern ?? ""), 80)}` };
     case "Grep": return { summary: `Search: ${clip(String(i.pattern ?? ""), 80)}` };
-    default: return { summary: name };
+    default: { const m = /^mcp__([a-z0-9-]+)__(.+)$/.exec(name); return { summary: m ? `${m[1]} (MCP): ${m[2]}` : name }; }
   }
 }
 

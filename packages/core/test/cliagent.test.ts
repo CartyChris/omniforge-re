@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildAgentPrompt, claudeAgentArgs, commandRuleProblem, normalizeClaudeLine, type AgentEvent } from "../src/ai/cliagent";
+import { MCP_PRESETS, buildAgentPrompt, claudeAgentArgs, commandRuleProblem, describeMcpServer, mcpConfigJson, mcpServerProblem, normalizeClaudeLine, type AgentEvent, type McpServerSpec } from "../src/ai/cliagent";
 
 const transcript = fs.readFileSync(path.join(__dirname, "fixtures/transcripts/claude-code-2.1.302-write-file.jsonl"), "utf8").split("\n").filter(Boolean);
 
@@ -54,6 +54,58 @@ describe("claudeAgentArgs", () => {
       if (bad.trim()) expect(() => claudeAgentArgs({ allowedCommands: [bad] }), bad).toThrow(); // blank entries are simply ignored
     }
     for (const good of ["npm test", "npm run build", "pytest -q", "go test ./...", "cargo test", "pnpm -r test", "make check"]) expect(commandRuleProblem(good), good).toBeNull();
+  });
+});
+
+describe("MCP servers for an agent run", () => {
+  const ok: McpServerSpec = { name: "docs", command: "npx", args: ["-y", "some-mcp@1.2.3"] };
+  it("adds exactly the approved servers: strict config, one config file, one permission rule per server, built-in tools unchanged", () => {
+    const a = claudeAgentArgs({ mcpServers: [ok, { name: "remote", url: "https://mcp.example.com/mcp" }], mcpConfigPath: "/tmp/run/mcp.json" });
+    expect(a).toContain("--strict-mcp-config");
+    expect(a[a.indexOf("--mcp-config") + 1]).toBe("/tmp/run/mcp.json");
+    expect(a[a.indexOf("--allowedTools") + 1]).toBe("Read,Edit,Write,Glob,Grep,mcp__docs,mcp__remote");
+    expect(a[a.indexOf("--tools") + 1]).toBe("Read,Edit,Write,Glob,Grep");
+    expect(claudeAgentArgs()).not.toContain("--mcp-config");
+    expect(claudeAgentArgs({ mcpServers: [] })).not.toContain("--mcp-config");
+  });
+  it("refuses to build a command line from a bad server list", () => {
+    expect(() => claudeAgentArgs({ mcpServers: [ok] })).toThrow(/config file path/);
+    expect(() => claudeAgentArgs({ mcpServers: [ok, ok], mcpConfigPath: "/x" })).toThrow(/unique/);
+    expect(() => claudeAgentArgs({ mcpServers: Array.from({ length: 9 }, (_, i) => ({ name: `s${i}`, command: "npx" })), mcpConfigPath: "/x" })).toThrow(/At most 8/);
+    expect(() => claudeAgentArgs({ mcpServers: [{ name: "x", command: "bash", args: ["-c", "id"] }], mcpConfigPath: "/x" })).toThrow(/cannot be used to launch/);
+  });
+  it("rejects names that could forge a permission rule and launchers that run arbitrary code", () => {
+    for (const name of ["", "Docs", "a_b", "a__b", "1abc", "a b", "a,b", "x".repeat(31), "a)", "../x"]) expect(mcpServerProblem({ name, command: "npx" }), name).not.toBeNull();
+    for (const command of ["bash", "/bin/sh", "sudo", "curl", "env", "osascript", "npx -y x", "npx;id", "$(id)", "", "a\nb"]) expect(mcpServerProblem({ name: "ok", command }), command).not.toBeNull();
+    for (const args of [["-e", "1"], ["-c", "x"], ["--eval", "x"], ["-r", "x"]]) { expect(mcpServerProblem({ name: "ok", command: "node", args }), args.join()).toMatch(/Inline code/); expect(mcpServerProblem({ name: "ok", command: "/usr/bin/python3", args }), args.join()).toMatch(/Inline code/); }
+    expect(mcpServerProblem({ name: "ok", command: "node", args: ["server.js"] })).toBeNull();
+    expect(mcpServerProblem({ name: "ok", command: "npx", args: ["a\nb"] })).not.toBeNull();
+    expect(mcpServerProblem({ name: "ok", command: "npx", args: Array(21).fill("x") })).not.toBeNull();
+  });
+  it("accepts https and loopback http only, never credentials", () => {
+    expect(mcpServerProblem({ name: "a", url: "https://mcp.example.com/x" })).toBeNull();
+    expect(mcpServerProblem({ name: "a", url: "http://localhost:3000/mcp" })).toBeNull();
+    expect(mcpServerProblem({ name: "a", url: "http://127.0.0.1:8080" })).toBeNull();
+    for (const url of ["http://example.com/mcp", "ftp://x", "file:///etc/passwd", "https://u:p@example.com", "https://token@example.com", "not a url", "http://169.254.169.254/", "javascript:alert(1)", "https://x.com/" + "a".repeat(300)]) expect(mcpServerProblem({ name: "a", url }), url).not.toBeNull();
+  });
+  it("writes the document Claude Code reads, and nothing else (no env, no extra keys)", () => {
+    const j = JSON.parse(mcpConfigJson([ok, { name: "remote", url: "https://mcp.example.com/mcp" }, { name: "bare", command: "my-server" }]));
+    expect(j).toEqual({ mcpServers: { docs: { command: "npx", args: ["-y", "some-mcp@1.2.3"] }, remote: { type: "http", url: "https://mcp.example.com/mcp" }, bare: { command: "my-server" } } });
+    expect(() => mcpConfigJson([{ name: "x", command: "bash" }])).toThrow(/cannot be used/);
+    expect(describeMcpServer(ok)).toBe("docs: npx -y some-mcp@1.2.3");
+  });
+  it("every preset is valid, pinned to an exact version, and passes the same checks as user input", () => {
+    expect(MCP_PRESETS.map((p) => p.id)).toEqual(["chrome-devtools", "playwright", "context7"]);
+    for (const p of MCP_PRESETS) {
+      expect(mcpServerProblem(p.server), p.id).toBeNull();
+      expect("command" in p.server && p.server.args!.some((a) => /@\d+\.\d+\.\d+$/.test(a)), `${p.id} is pinned`).toBe(true);
+      expect(p.server.name).toBe(p.id);
+    }
+    const cd = MCP_PRESETS[0]!.server as { args: string[] }; expect(cd.args).toEqual(expect.arrayContaining(["--no-usage-statistics", "--no-performance-crux"]));
+  });
+  it("summarises MCP tool calls readably", () => {
+    const ev = normalizeClaudeLine(JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", id: "t1", name: "mcp__chrome-devtools__take_snapshot", input: {} }] } }));
+    expect(ev).toEqual([expect.objectContaining({ type: "tool", name: "mcp__chrome-devtools__take_snapshot", summary: "chrome-devtools (MCP): take_snapshot" })]);
   });
 });
 

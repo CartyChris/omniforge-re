@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -18,6 +19,33 @@ beforeEach(() => {
 });
 
 const run = async (s: Shadow, mode: string, extra: Record<string, unknown> = {}) => { const ev = []; for await (const e of runClaudeAgent(s, { cliPath: FAKE, prompt: "Please change things", env: { FAKE_MODE: mode }, ...extra })) ev.push(e); return ev; };
+
+describe("MCP servers", () => {
+  it("passes the approved list through a private config file that lives outside the copy and is gone afterwards", async () => {
+    const s = await createShadow(proj, { tmp });
+    try {
+      const servers = [{ name: "docs", command: "npx", args: ["-y", "some-mcp@1.2.3"] }, { name: "remote", url: "https://mcp.example.com/mcp" }];
+      const ev = await run(s, "mcp", { mcpServers: servers });
+      expect(ev.at(-1)).toMatchObject({ type: "result", ok: true });
+      const seen = JSON.parse(fs.readFileSync(path.join(s.work, "mcp-seen.json"), "utf8"));
+      expect(seen.cfg).toEqual({ mcpServers: { docs: { command: "npx", args: ["-y", "some-mcp@1.2.3"] }, remote: { type: "http", url: "https://mcp.example.com/mcp" } } });
+      expect(seen.cfgMode).toBe(0o600);
+      expect(seen.cfgPath.startsWith(s.dir + path.sep)).toBe(true); expect(seen.cfgPath.startsWith(s.work + path.sep)).toBe(false);
+      expect(seen.argv[seen.argv.indexOf("--allowedTools") + 1]).toBe("Read,Edit,Write,Glob,Grep,mcp__docs,mcp__remote");
+      expect(seen.argv).toContain("--strict-mcp-config");
+      expect(fs.existsSync(seen.cfgPath)).toBe(false); // removed when the run ends
+      expect((await listChanges(s)).map((c) => c.path)).toEqual(["mcp-seen.json"]); // the config itself can never reach the diff
+    } finally { await discardShadow(s); }
+  });
+  it("without servers there is no config file and no --mcp-config", async () => {
+    const s = await createShadow(proj, { tmp });
+    try { await run(s, "mcp"); const seen = JSON.parse(fs.readFileSync(path.join(s.work, "mcp-seen.json"), "utf8")); expect(seen.cfgPath).toBeNull(); expect(seen.argv).not.toContain("--mcp-config"); } finally { await discardShadow(s); }
+  });
+  it("an invalid server stops the run before anything is spawned", async () => {
+    const s = await createShadow(proj, { tmp });
+    try { await expect(run(s, "mcp", { mcpServers: [{ name: "x", command: "bash", args: ["-c", "id"] }] })).rejects.toThrow(/cannot be used to launch/); expect(fs.existsSync(path.join(s.work, "mcp-seen.json"))).toBe(false); } finally { await discardShadow(s); }
+  });
+});
 
 describe("createShadow", () => {
   it("copies the project but never credentials, project agent config, dependencies, .git, symlinks or huge files", async () => {
@@ -148,6 +176,20 @@ describe.skipIf(!live)("LIVE: real Claude Code in a shadow copy", () => {
       const ch = await listChanges(s); expect(ch.map((c) => `${c.status}:${c.path}`)).toEqual(["added:hello.txt"]);
       expect((await readSides(s, "hello.txt")).next).toBe("hi there");
       expect((await applyChanges(s, { paths: ["hello.txt"] })).applied).toEqual(["hello.txt"]); expect(fs.readFileSync(path.join(proj, "hello.txt"), "utf8")).toBe("hi there");
+    } finally { await discardShadow(s); }
+  }, 240_000);
+
+  it("an MCP tool approved for the run is really called by the CLI (a value only the MCP server knows reaches the diff)", async () => {
+    const info = (await detectClis()).find((c) => c.id === "claude-code");
+    if (!info?.path || info.status === "not-installed") return;
+    const secret = `codeword-${crypto.randomBytes(5).toString("hex")}`; const server = new URL("./fixtures/mini-mcp.mjs", import.meta.url).pathname;
+    const s = await createShadow(proj, { tmp });
+    try {
+      const ev = []; for await (const e of runClaudeAgent(s, { cliPath: info.path, prompt: "Use the lookup tool from the MCP server named mini to get the project code word, then create a file named codeword.txt containing exactly that word. Then stop.", maxBudgetUsd: 1, mcpServers: [{ name: "mini", command: process.execPath, args: [server, secret] }], env: Object.fromEntries(Object.entries(process.env).filter(([k]) => /^(CLAUDE|ANTHROPIC)/.test(k)).map(([k, v]) => [k, String(v)])) })) ev.push(e);
+      expect(ev.at(-1), JSON.stringify(ev.slice(-3))).toMatchObject({ type: "result", ok: true });
+      expect(ev.some((e) => e.type === "tool" && e.name === "mcp__mini__lookup" && /mini \(MCP\): lookup/.test(e.summary))).toBe(true);
+      expect((await readSides(s, "codeword.txt")).next?.trim()).toBe(secret);
+      expect(fs.existsSync(path.join(proj, "codeword.txt"))).toBe(false);
     } finally { await discardShadow(s); }
   }, 240_000);
 });

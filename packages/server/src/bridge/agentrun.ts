@@ -14,7 +14,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { claudeAgentArgs, normalizeClaudeLine, type AgentEvent, type ClaudeAgentOptions } from "@omniforge/core";
+import { claudeAgentArgs, mcpConfigJson, normalizeClaudeLine, type AgentEvent, type ClaudeAgentOptions } from "@omniforge/core";
 import { SECRET_FILE } from "./fsx.js";
 import { passEnvFor } from "./clis.js";
 import { augmentedPath, sanitizedEnv } from "./jobs.js";
@@ -146,7 +146,11 @@ export interface AgentRunOptions extends ClaudeAgentOptions { cliPath: string; p
 function killGroup(pid: number | undefined) { if (!pid) return; try { process.kill(-pid, "SIGTERM"); } catch { /* gone */ } setTimeout(() => { try { process.kill(-pid, "SIGKILL"); } catch { /* gone */ } }, 3000).unref(); }
 
 export async function* runClaudeAgent(s: Shadow, o: AgentRunOptions): AsyncGenerator<AgentEvent> {
-  const args = claudeAgentArgs(o);
+  // The MCP config lives beside the copy, never inside it, so it can neither be edited by the agent into the diff nor applied to the project.
+  claudeAgentArgs({ ...o, mcpConfigPath: "unchecked" }); // validate everything before touching the disk or spawning anything
+  const mcpPath = o.mcpServers?.length ? path.join(s.dir, `mcp-${crypto.randomBytes(6).toString("hex")}.json`) : undefined;
+  if (mcpPath) await fsp.writeFile(mcpPath, mcpConfigJson(o.mcpServers!), { mode: 0o600 });
+  const args = claudeAgentArgs({ ...o, mcpConfigPath: mcpPath });
   const child = spawn(o.cliPath, args, { cwd: s.work, env: sanitizedEnv({ ...passEnvFor("claude-code"), ...o.env }), detached: true, stdio: ["pipe", "pipe", "pipe"] });
   child.stdin!.on("error", () => {}); child.stdin!.end(o.prompt);
   const timer = setTimeout(() => killGroup(child.pid), o.timeoutMs ?? 20 * 60_000);
@@ -159,7 +163,7 @@ export async function* runClaudeAgent(s: Shadow, o: AgentRunOptions): AsyncGener
   child.on("error", (e) => { spawnError = e.message; ended = true; wake?.(); });
   try {
     while (!ended || queue.length) { if (queue.length) { yield queue.shift()!; continue; } await new Promise<void>((r) => { wake = r; }); }
-  } finally { clearTimeout(timer); o.signal?.removeEventListener("abort", onAbort); if (!ended) killGroup(child.pid); }
+  } finally { clearTimeout(timer); o.signal?.removeEventListener("abort", onAbort); if (!ended) killGroup(child.pid); if (mcpPath) await fsp.rm(mcpPath, { force: true }); }
   if (o.signal?.aborted) { yield { type: "error", message: "Cancelled." }; return; }
   if (spawnError) yield { type: "error", message: `Could not start the CLI: ${spawnError}` };
   else if (!sawResult) yield { type: "error", message: `The CLI exited (code ${code}) without a result${stderr.trim() ? `: ${stderr.trim().split("\n").slice(-3).join(" ").slice(0, 300)}` : "."}` };

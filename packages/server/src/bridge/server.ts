@@ -7,7 +7,7 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
-import { analyzeSnapshot, assessRip, buildAgentPrompt, discoverLocalServices, effective, investigateSource, type AgentEvent, type Investigation } from "@omniforge/core";
+import { analyzeSnapshot, assessRip, buildAgentPrompt, claudeAgentArgs, discoverLocalServices, effective, investigateSource, type AgentEvent, type Investigation } from "@omniforge/core";
 import { analyzeHandler, probeHandler } from "../handlers.js";
 import { HttpError, UserError, bytesToB64, err, json, readJson, sse } from "../http.js";
 import { BlockedUrlError, ProviderError, RightsError } from "@omniforge/core";
@@ -175,11 +175,14 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
       if (info.status === "unsupported-invocation") return err("This version of Claude Code does not expose the non-interactive mode this app needs.", 400);
       const rt = root(b.root); const prompt = buildAgentPrompt(String(b.prompt ?? ""), typeof b.brief === "string" ? b.brief : undefined);
       const budget = Math.min(20, Math.max(0.1, Number(b.maxBudgetUsd) || 2));
+      // Only well-formed server entries are forwarded (names, commands and addresses are re-validated by core before anything runs).
+      const mcpServers = Array.isArray(b.mcpServers) ? b.mcpServers.slice(0, 9).map((m: any) => ("url" in (m ?? {}) ? { name: String(m.name), url: String(m.url) } : { name: String(m?.name), command: String(m?.command), args: Array.isArray(m?.args) ? m.args.map(String) : [] })) : [];
+      try { claudeAgentArgs({ mcpServers, mcpConfigPath: "x" }); } catch (e) { return err((e as Error).message, 400); }
       return sse(async (send, signal) => {
         const shadow = await createShadow(rt.path); agentRuns.add(shadow, String(b.root));
         send("start", { runId: shadow.id, copied: shadow.copied, bytes: shadow.bytes, skipped: shadow.skipped.slice(0, 100), cli: info.version });
         let result: AgentEvent | undefined;
-        for await (const e of runClaudeAgent(shadow, { cliPath: info.path!, prompt, model: typeof b.model === "string" ? b.model : undefined, allowedCommands: Array.isArray(b.allowedCommands) ? b.allowedCommands.map(String).slice(0, 12) : [], maxBudgetUsd: budget, signal })) { send("event", e); if (e.type === "result") result = e; }
+        for await (const e of runClaudeAgent(shadow, { cliPath: info.path!, prompt, model: typeof b.model === "string" ? b.model : undefined, allowedCommands: Array.isArray(b.allowedCommands) ? b.allowedCommands.map(String).slice(0, 12) : [], mcpServers: mcpServers, maxBudgetUsd: budget, signal })) { send("event", e); if (e.type === "result") result = e; }
         send("done", { runId: shadow.id, ok: result?.type === "result" && result.ok, result, changes: await listChanges(shadow) });
       }, req);
     }

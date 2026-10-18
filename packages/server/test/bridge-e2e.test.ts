@@ -229,6 +229,11 @@ describe("privileged capabilities through the bridge (desktop UI token)", () => 
     expect((await call("POST", "/bridge/agent/run", { origin: WEB, body: { cli: "claude-code", root: ro.id, prompt: "x" } })).status).toBe(401);
     const bad = await ui("POST", "/bridge/agent/run", { cli: "gemini", root: ro.id, prompt: "x" }); expect(bad.status).toBe(400);
     const empty = await ui("POST", "/bridge/agent/run", { cli: "claude-code", root: ro.id, prompt: "   " }); expect(empty.status).toBeGreaterThanOrEqual(400);
+    // MCP servers are validated by the engine itself, whatever the UI sent: nothing starts and nothing is copied
+    for (const mcpServers of [[{ name: "x", command: "bash", args: ["-c", "id"] }], [{ name: "Bad_Name", command: "npx" }], [{ name: "u", url: "http://example.com/mcp" }], [{ name: "d", command: "npx" }, { name: "d", command: "npx" }]]) {
+      const r = await ui("POST", "/bridge/agent/run", { cli: "claude-code", root: ro.id, prompt: "x", mcpServers }); expect(r.status, JSON.stringify(mcpServers)).toBe(400);
+      expect(JSON.stringify(r.json)).toMatch(/MCP server|unique/);
+    }
 
     // run (the scripted CLI, default 'edit' behaviour): SSE start → events → done with the change list
     const r = await call("POST", "/bridge/agent/run", { token: bridge.auth.uiToken, origin: "tauri://localhost", body: { cli: "claude-code", root: ro.id, prompt: "Add a header comment" } });

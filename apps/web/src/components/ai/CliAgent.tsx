@@ -2,12 +2,13 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Check, FilePlus2, FileX2, Loader2, PencilLine, RotateCcw, SquareTerminal, StopCircle, Terminal, TriangleAlert } from "lucide-react";
 import { useSearchParams } from "react-router";
-import { REBUILD_MODES, claudeAgentArgs, commandRuleProblem, rebuildInstruction, siteBrief, type RebuildMode, type AgentEvent, type Investigation } from "@omniforge/core";
+import { MCP_PRESETS, REBUILD_MODES, claudeAgentArgs, commandRuleProblem, describeMcpServer, mcpServerProblem, rebuildInstruction, siteBrief, type McpServerSpec, type RebuildMode, type AgentEvent, type Investigation } from "@omniforge/core";
 import { useApp } from "@/lib/store";
 import { readSSE } from "@/lib/bridge";
 import { listRoots, type RootInfo } from "@/lib/local";
 import { requestApproval } from "@/lib/approvals";
 import { audit } from "@/lib/audit";
+import { db } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import { Badge, Button, Card, CardBody, CardHeader, CardTitle, EmptyState, Field, Input, Spinner, Textarea } from "@/components/ui/primitives";
 import { Select } from "@/components/ui/overlay";
@@ -29,6 +30,10 @@ export function CliAgentPanel() {
   // "Rebuild with Claude Code" arrives as ?inv=&mode=&stack=[&features=a,b][&improve=…]: pre-fill the analysis and the instruction (still editable, still behind the consent dialog).
   const [roots, setRoots] = useState<RootInfo[]>([]); const [root, setRoot] = useState(""); const [prompt, setPrompt] = useState(""); const [inv, setInv] = useState("none");
   const [cmds, setCmds] = useState<string[]>([]); const [cmdText, setCmdText] = useState("");
+  // MCP servers the user has defined (kept on this device) and which of them this run may use. Nothing is selected by default.
+  const [mcpDefs, setMcpDefs] = useState<McpServerSpec[]>([]); const [mcpOn, setMcpOn] = useState<Set<string>>(new Set()); const [mcpForm, setMcpForm] = useState({ name: "", target: "" });
+  useEffect(() => { void db.get<McpServerSpec[]>("agent:mcp").then((d) => Array.isArray(d) && setMcpDefs(d.filter((x) => !mcpServerProblem(x)))).catch(() => {}); }, []);
+  const saveDefs = (d: McpServerSpec[]) => { setMcpDefs(d); void db.set("agent:mcp", d).catch(() => {}); };
   const [busy, setBusy] = useState(false); const [events, setEvents] = useState<AgentEvent[]>([]); const [start, setStart] = useState<Start | null>(null); const [done, setDone] = useState<Done | null>(null); const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set()); const [allowDeletes, setAllowDeletes] = useState(false); const [view, setView] = useState<string | null>(null); const [sides, setSides] = useState<{ base: string | null; next: string | null; binary: boolean } | null>(null);
   const [applied, setApplied] = useState<{ applied: string[]; conflicts: { path: string; reason: string }[]; refused: { path: string; reason: string }[]; backup: string | null } | null>(null);
@@ -50,16 +55,25 @@ export function CliAgentPanel() {
   if (!cli || cli.status === "not-installed") return <Card><EmptyState icon={<Terminal className="size-5" />} title="Claude Code isn't installed" body="Install it (npm install -g @anthropic-ai/claude-code) and sign in once in a terminal, then reopen this tab. Other CLIs are used as text providers in Chat and Build." /></Card>;
 
   const addCmd = (c: string) => { const t = c.trim(); if (!t || cmds.includes(t)) return; const p = commandRuleProblem(t); if (p) return void toast.error(p); setCmds([...cmds, t]); setCmdText(""); };
+  const mcpAll: McpServerSpec[] = [...MCP_PRESETS.map((p) => p.server), ...mcpDefs.filter((d) => !MCP_PRESETS.some((p) => p.server.name === d.name))];
+  const mcpChosen = mcpAll.filter((m) => mcpOn.has(m.name));
+  const addMcp = () => {
+    const name = mcpForm.name.trim(); const t = mcpForm.target.trim(); if (!name || !t) return;
+    const spec: McpServerSpec = /^https?:\/\//i.test(t) ? { name, url: t } : { name, command: t.split(/\s+/)[0]!, args: t.split(/\s+/).slice(1) };
+    const p = mcpServerProblem(spec); if (p) return void toast.error(p);
+    if (mcpAll.some((m) => m.name === name)) return void toast.error("A server with that name already exists.");
+    saveDefs([...mcpDefs, spec]); setMcpOn(new Set([...mcpOn, name])); setMcpForm({ name: "", target: "" });
+  };
   const run = async () => {
     if (!rootInfo || !prompt.trim()) return;
-    const shown = claudeAgentArgs({ allowedCommands: cmds }).filter((_, i, a) => a[i - 1] !== "--append-system-prompt" && a[i] !== "--append-system-prompt");
-    const ok = await requestApproval({ kind: "command", title: `Run Claude Code on a copy of “${rootInfo.label}”?`, detail: `Claude Code ${cli.version ?? ""} will read and edit a private copy of this folder (without credential files, dependencies or any .claude / CLAUDE.md configuration). Your folder is not touched until you review and apply the changes. It uses your own Claude login and may cost credits (capped at $2 for this run).${cmds.length ? ` It may also run these commands inside the copy: ${cmds.join(", ")}.` : " It cannot run shell commands."}`, command: `claude ${shown.join(" ")}`, danger: cmds.length > 0 });
+    const shown = claudeAgentArgs({ allowedCommands: cmds, mcpServers: mcpChosen, mcpConfigPath: "<private config file>" }).filter((_, i, a) => a[i - 1] !== "--append-system-prompt" && a[i] !== "--append-system-prompt");
+    const ok = await requestApproval({ kind: "command", title: `Run Claude Code on a copy of “${rootInfo.label}”?`, detail: `Claude Code ${cli.version ?? ""} will read and edit a private copy of this folder (without credential files, dependencies or any .claude / CLAUDE.md configuration). Your folder is not touched until you review and apply the changes. It uses your own Claude login and may cost credits (capped at $2 for this run).${cmds.length ? ` It may also run these commands inside the copy: ${cmds.join(", ")}.` : " It cannot run shell commands."}${mcpChosen.length ? ` It may use these MCP servers, which are programs or services outside this app that act with your permissions and are not sandboxed: ${mcpChosen.map(describeMcpServer).join(" · ")}.` : ""}`, command: `claude ${shown.join(" ")}${mcpChosen.length ? `\n# MCP config: ${JSON.stringify(Object.fromEntries(mcpChosen.map((m) => [m.name, "url" in m ? { type: "http", url: m.url } : { command: m.command, args: m.args }])))}` : ""}`, danger: cmds.length > 0 || mcpChosen.length > 0 });
     if (!ok) return;
     const brief = inv !== "none" ? siteBrief(invs.find((i) => i.id === inv)!) : undefined;
     setBusy(true); setEvents([]); setStart(null); setDone(null); setError(null); setApplied(null); setPicked(new Set()); setView(null); const ctrl = new AbortController(); abort.current = ctrl;
-    void audit("agent run started", `Claude Code on ${rootInfo.label}${cmds.length ? ` with commands: ${cmds.join(", ")}` : ""}`);
+    void audit("agent run started", `Claude Code on ${rootInfo.label}${cmds.length ? ` with commands: ${cmds.join(", ")}` : ""}${mcpChosen.length ? ` with MCP servers: ${mcpChosen.map((m) => m.name).join(", ")}` : ""}`);
     try {
-      const res = await bridge.raw("POST", "/bridge/agent/run", { cli: "claude-code", root, prompt: prompt.trim(), brief, allowedCommands: cmds, maxBudgetUsd: 2 }, ctrl.signal);
+      const res = await bridge.raw("POST", "/bridge/agent/run", { cli: "claude-code", root, prompt: prompt.trim(), brief, allowedCommands: cmds, mcpServers: mcpChosen, maxBudgetUsd: 2 }, ctrl.signal);
       await readSSE(res, (ev, d) => {
         if (ev === "start") setStart(d); else if (ev === "event") setEvents((e) => [...e, d]);
         else if (ev === "done") { setDone(d); setPicked(new Set((d.changes as Change[]).filter((c) => !c.refused && c.status !== "deleted").map((c) => c.path))); setView((d.changes as Change[])[0]?.path ?? null); }
@@ -92,6 +106,14 @@ export function CliAgentPanel() {
               <div className="flex flex-wrap gap-1.5">{PRESETS.map((p) => <Button key={p} size="xs" variant={cmds.includes(p) ? "primary" : "secondary"} onClick={() => setCmds(cmds.includes(p) ? cmds.filter((x) => x !== p) : [...cmds, p])}>{p}</Button>)}</div>
               <div className="flex gap-2"><Input value={cmdText} onChange={(e) => setCmdText(e.target.value)} placeholder="another command, e.g. make check" aria-label="Add an allowed command" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCmd(cmdText); } }} /><Button size="sm" variant="secondary" onClick={() => addCmd(cmdText)}>Add</Button></div>
               {cmds.filter((c) => !PRESETS.includes(c)).map((c) => <Badge key={c} tone="warn">{c}</Badge>)}
+            </div></details>
+          <details className="text-[13px]"><summary className="cursor-pointer text-muted hover:text-fg">Give it MCP tools (off by default){mcpChosen.length ? ` — ${mcpChosen.length} selected` : ""}</summary>
+            <div className="mt-2 space-y-2"><p className="text-xs text-muted">MCP servers add tools such as a browser, live docs or your own services. A server is a program that runs on this Mac as you (not sandboxed) or a web service that receives what the agent sends it, so choose only ones you trust. Presets are pinned to an exact version.</p>
+              <div className="space-y-1.5">{mcpAll.map((m) => { const preset = MCP_PRESETS.find((p) => p.server.name === m.name); return (
+                <label key={m.name} className="flex items-start gap-2 rounded-lg border border-line px-2.5 py-2"><input type="checkbox" className="mt-0.5" checked={mcpOn.has(m.name)} onChange={(e) => setMcpOn((p) => { const n = new Set(p); e.target.checked ? n.add(m.name) : n.delete(m.name); return n; })} aria-label={`Use MCP server ${m.name}`} />
+                  <span className="min-w-0 flex-1"><span className="font-medium">{preset?.label ?? m.name}</span>{preset && <span className="text-muted"> — {preset.blurb}</span>}<span className="mt-0.5 block truncate font-mono text-[11px] text-muted" title={describeMcpServer(m)}>{describeMcpServer(m).replace(/^[^:]+: /, "")}</span>{preset && <span className="block text-[11px] text-warn">{preset.leaves}</span>}</span>
+                  {!preset && <Button size="xs" variant="ghost" onClick={(e) => { e.preventDefault(); saveDefs(mcpDefs.filter((d) => d.name !== m.name)); setMcpOn((p) => { const n = new Set(p); n.delete(m.name); return n; }); }}>Remove</Button>}</label>); })}</div>
+              <div className="grid gap-2 sm:grid-cols-[10rem_1fr_auto]"><Input value={mcpForm.name} onChange={(e) => setMcpForm({ ...mcpForm, name: e.target.value })} placeholder="name, e.g. my-docs" aria-label="MCP server name" /><Input value={mcpForm.target} onChange={(e) => setMcpForm({ ...mcpForm, target: e.target.value })} placeholder="command and arguments, or an https:// address" aria-label="MCP server command or address" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addMcp(); } }} /><Button size="sm" variant="secondary" onClick={addMcp}>Add</Button></div>
             </div></details>
           <div className="flex items-center gap-2">{busy && !done ? <Button variant="danger" icon={<StopCircle className="size-4" />} onClick={() => abort.current?.abort()}>Stop</Button> : <Button variant="primary" icon={<Terminal className="size-4" />} disabled={busy || !rootInfo || !prompt.trim() || !!cmdProblems.length || settings.localOnly || cli.status === "installed-unauthenticated"} onClick={() => void run()}>Run on a copy</Button>}
             {cli.status === "installed-unauthenticated" && <span className="text-xs text-warn">Sign in to Claude Code in a terminal first.</span>}</div>

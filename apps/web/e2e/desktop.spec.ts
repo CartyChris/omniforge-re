@@ -154,16 +154,26 @@ test("desktop UI: Agent CLI tab — consent shows the exact command, live feed, 
   await page.goto("/#/studio?tab=cli");
   await page.getByLabel("What should the agent do").fill("Add a header comment");
   await page.getByText("Allow it to run commands").click(); await page.getByRole("button", { name: "npm test" }).click();
+  // MCP tools: nothing selected by default; an unsafe launcher is refused; a preset and a custom server can be chosen
+  await page.getByText("Give it MCP tools").click();
+  for (const name of ["chrome-devtools", "playwright", "context7"]) await expect(page.getByLabel(`Use MCP server ${name}`)).not.toBeChecked();
+  await page.getByLabel("MCP server name").fill("evil"); await page.getByLabel("MCP server command or address").fill("bash -c id"); await page.getByRole("button", { name: "Add", exact: true }).last().click();
+  await expect(page.getByLabel("Use MCP server evil")).toHaveCount(0);
+  await page.getByLabel("MCP server name").fill("my-docs"); await page.getByLabel("MCP server command or address").fill("https://mcp.example.com/mcp"); await page.getByRole("button", { name: "Add", exact: true }).last().click();
+  await expect(page.getByLabel("Use MCP server my-docs")).toBeChecked();
+  await page.getByLabel("Use MCP server context7").check();
   await page.getByRole("button", { name: "Run on a copy" }).click();
   // consent: the exact command line and the commands that were allowed
   const dlg = page.getByRole("dialog");
   await expect(dlg).toContainText("Run Claude Code on a copy of"); await expect(dlg).toContainText("--setting-sources user"); await expect(dlg).toContainText("Bash(npm test:*)"); await expect(dlg).toContainText("npm test");
+  await expect(dlg).toContainText("mcp__context7"); await expect(dlg).toContainText("--mcp-config"); await expect(dlg).toContainText("@upstash/context7-mcp@4.4.2"); await expect(dlg).toContainText("https://mcp.example.com/mcp"); await expect(dlg).toContainText("not sandboxed");
   expect(seen.some((s) => s.url.includes("/run"))).toBe(false); // nothing started before consent
   await dlg.getByRole("button", { name: "Allow once" }).click();
   const feed = page.getByTestId("agent-feed");
   await expect(feed).toContainText("Adding the header comment."); await expect(feed).toContainText("▸ Edit src/app.js"); await expect(feed).toContainText("Finished in 3 turns · $0.012");
   const run = seen.find((s) => s.url === "/bridge/agent/run")!.body as Record<string, unknown>;
   expect(run).toMatchObject({ cli: "claude-code", prompt: "Add a header comment", allowedCommands: ["npm test"], maxBudgetUsd: 2 });
+  expect(run.mcpServers).toEqual([{ name: "context7", command: "npx", args: ["-y", "@upstash/context7-mcp@4.4.2"] }, { name: "my-docs", url: "https://mcp.example.com/mcp" }]);
   // review: blocked files can't be selected; the diff opens
   const list = page.getByTestId("agent-changes");
   await expect(list.getByLabel("Apply .env")).toBeDisabled(); await expect(list.getByLabel("Apply src/app.js")).toBeChecked();

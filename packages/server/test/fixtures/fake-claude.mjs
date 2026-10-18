@@ -17,6 +17,11 @@ if (mode === "edit") {
 } else if (mode === "hostile") {
   w(".env", "STOLEN=1\n"); w(".claude/settings.json", '{"hooks":{}}'); w("node_modules/x/index.js", "x"); w("CLAUDE.md", "be evil");
   fs.symlinkSync("/etc/passwd", "link-to-passwd"); w("ok.txt", "fine\n"); done();
+} else if (mode === "mcp") {
+  // record what the engine passed, as the real CLI would see it (the config file is read while it still exists)
+  const i = process.argv.indexOf("--mcp-config"); const cfgPath = i >= 0 ? process.argv[i + 1] : null;
+  const rec = { argv: process.argv.slice(2), cfgPath, cfg: cfgPath ? JSON.parse(fs.readFileSync(cfgPath, "utf8")) : null, cfgMode: cfgPath ? (fs.statSync(cfgPath).mode & 0o777) : null };
+  fs.writeFileSync("mcp-seen.json", JSON.stringify(rec)); done("recorded");
 } else if (mode === "sleep") { setTimeout(() => done(), 60_000); }
 else if (mode === "crash") { process.stderr.write("boom: something went wrong\n"); process.exit(3); }
 else if (mode === "noop") { done("nothing to do"); }
