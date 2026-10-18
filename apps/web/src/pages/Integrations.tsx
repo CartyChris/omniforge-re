@@ -25,6 +25,7 @@ export default function Integrations() {
       <div className="grid gap-5 lg:grid-cols-2"><GitHubCard /><VercelCard /></div>
       <SetupCard />
       <Companion />
+      <McpServerCard />
       <DesktopOnly />
     </div>
   );
@@ -102,6 +103,23 @@ function Companion() {
 }
 
 const ST: Record<string, "ok" | "warn" | "bad" | "neutral"> = { ready: "ok", available: "ok", found: "ok", "not-installed": "neutral", missing: "neutral", "needs-configuration": "warn", "needs-auth": "warn", unsupported: "bad", error: "bad" };
+
+const MCP_BIN = "/Applications/OmniForge RE.app/Contents/MacOS/omniforge-bridge";
+const MCP_CLAUDE = `claude mcp add omniforge -- "${MCP_BIN}" mcp`;
+const MCP_JSON = JSON.stringify({ mcpServers: { omniforge: { command: MCP_BIN, args: ["mcp"] } } }, null, 2);
+
+/** Other coding agents can call OmniForge as an MCP server — read/plan tools only. */
+function McpServerCard() {
+  return (
+    <Card><CardHeader><CardTitle className="flex items-center gap-2"><PlugZap className="size-4" />Use OmniForge from Claude Code, Cursor and other MCP clients</CardTitle></CardHeader>
+      <CardBody className="space-y-3 text-[13px]">
+        <p className="text-muted">The desktop app includes an MCP server with four tools: <code>analyze_url</code>, <code>list_investigations</code>, <code>get_investigation</code> and <code>rebuild_plan</code>. They only read and plan — nothing writes files, runs commands or deploys — and public websites only (private and local addresses are refused). Everything about a site is returned as untrusted data.</p>
+        <div className="space-y-1.5"><p className="text-xs font-medium text-muted">Claude Code (run in a terminal)</p><div className="flex items-start gap-2"><code tabIndex={0} aria-label="Claude Code command" className="block min-w-0 flex-1 overflow-x-auto whitespace-pre rounded-lg bg-overlay px-3 py-2 font-mono text-xs" data-testid="mcp-claude">{MCP_CLAUDE}</code><CopyButton text={MCP_CLAUDE} /></div></div>
+        <div className="space-y-1.5"><p className="text-xs font-medium text-muted">Other clients (Claude Desktop, Cursor… — add to their MCP settings)</p><div className="flex items-start gap-2"><pre tabIndex={0} aria-label="MCP client configuration" className="block min-w-0 flex-1 overflow-x-auto rounded-lg bg-overlay px-3 py-2 font-mono text-xs" data-testid="mcp-json">{MCP_JSON}</pre><CopyButton text={MCP_JSON} /></div></div>
+        <p className="text-xs text-faint">Paths assume the app is in /Applications. Add <code>--allow-private</code> after <code>mcp</code> only if you want it to analyse sites on this computer or your network.</p>
+      </CardBody></Card>
+  );
+}
 
 function DesktopOnly() {
   const { bridge, bridgeState, bridgeInfo, refreshBridge } = useApp();

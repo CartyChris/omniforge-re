@@ -59,6 +59,25 @@ const got = (folder?.endpoints ?? []).map((e) => `${e.method} ${e.url}`).sort();
 const want = ["GET /api/ping", "GET /health", "GET /users/{id}"];
 if (JSON.stringify(got) !== JSON.stringify(want)) problems.push(`tree-sitter routes: got ${JSON.stringify(got)}, wanted ${JSON.stringify(want)}; structure check: ${JSON.stringify(folder?.coverage?.checks?.find((c) => c.id === "structure"))}`);
 fs.rmSync(proj, { recursive: true, force: true });
+// --- OmniForge as an MCP server (`<binary> mcp`): handshake, tool list, and a real analysis through the compiled binary
+{
+  const m = spawn(bin, ["mcp", "--allow-private"], { stdio: ["pipe", "pipe", "pipe"] }); const lines = []; let acc = "";
+  m.stdout.on("data", (d) => { acc += d; let i; while ((i = acc.indexOf("\n")) >= 0) { lines.push(acc.slice(0, i)); acc = acc.slice(i + 1); } });
+  const send = (o) => m.stdin.write(JSON.stringify(o) + "\n");
+  send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "smoke", version: "1" } } });
+  send({ jsonrpc: "2.0", method: "notifications/initialized" });
+  send({ jsonrpc: "2.0", id: 2, method: "tools/list" });
+  send({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "analyze_url", arguments: { url: `${base}/`, max_pages: 2 } } });
+  for (let i = 0; i < 300 && lines.length < 3; i++) await new Promise((r) => setTimeout(r, 100));
+  m.stdin.end(); m.kill();
+  try {
+    const by = Object.fromEntries(lines.map((l) => JSON.parse(l)).map((r) => [r.id, r]));
+    const names = (by[2]?.result?.tools ?? []).map((t) => t.name).join(",");
+    if (by[1]?.result?.serverInfo?.name !== "omniforge-re") problems.push("mcp: no initialize result");
+    if (names !== "analyze_url,list_investigations,get_investigation,rebuild_plan") problems.push(`mcp: tools are ${names}`);
+    if (!/Investigation \S+ \(\d+ pages/.test(by[3]?.result?.content?.[0]?.text ?? "")) problems.push(`mcp: analyze_url returned ${JSON.stringify(by[3]).slice(0, 300)}`);
+  } catch (e) { problems.push(`mcp: stdout was not clean JSON-RPC (${e.message}); got ${lines.slice(0, 3).join(" | ").slice(0, 300)}`); }
+}
 child.kill(); site.close();
 if (problems.length) { console.error(`✗ deobfuscation smoke test failed:\n  - ${problems.join("\n  - ")}`); process.exit(1); }
-console.log(`✓ ${path.basename(bin)}: deobfuscation and tree-sitter route extraction work in the compiled engine (${f.path}, ${f.bytes} bytes; routes ${want.join(", ")})`);
+console.log(`✓ ${path.basename(bin)}: deobfuscation, tree-sitter route extraction and the MCP server work in the compiled engine (${f.path}, ${f.bytes} bytes; routes ${want.join(", ")})`);

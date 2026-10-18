@@ -50,3 +50,13 @@ test("audit trail: privacy-mode change is recorded, persists across reload, and 
   await page.getByRole("button", { name: "Clear" }).first().click();
   await expect(page.getByTestId("audit-trail")).toContainText("Nothing recorded yet");
 });
+
+test("integrations: the MCP card shows copyable, consistent setup commands for Claude Code and JSON clients", async ({ page }) => {
+  const errors = await prepare(page);
+  await page.goto("/#/integrations");
+  const cmd = await page.getByTestId("mcp-claude").innerText();
+  expect(cmd).toBe('claude mcp add omniforge -- "/Applications/OmniForge RE.app/Contents/MacOS/omniforge-bridge" mcp');
+  const cfg = JSON.parse(await page.getByTestId("mcp-json").innerText());
+  expect(cfg).toEqual({ mcpServers: { omniforge: { command: "/Applications/OmniForge RE.app/Contents/MacOS/omniforge-bridge", args: ["mcp"] } } });
+  noErrors(errors);
+});

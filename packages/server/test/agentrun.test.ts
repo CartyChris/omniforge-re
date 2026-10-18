@@ -5,6 +5,8 @@ import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { applyChanges, createShadow, discardShadow, listChanges, readSides, runClaudeAgent, type Shadow } from "../src/bridge/agentrun";
 import { detectClis } from "../src/bridge/clis";
+// @ts-expect-error plain ESM fixture shared with core tests and e2e
+import { createFixture } from "../../../fixtures/server.mjs";
 
 const FAKE = path.join(__dirname, "fixtures/fake-claude.mjs");
 let tmp: string; let proj: string;
@@ -192,4 +194,17 @@ describe.skipIf(!live)("LIVE: real Claude Code in a shadow copy", () => {
       expect(fs.existsSync(path.join(proj, "codeword.txt"))).toBe(false);
     } finally { await discardShadow(s); }
   }, 240_000);
+
+  it("OmniForge's own MCP server (`main.ts mcp`) works end to end with the real CLI: it analyses a site and returns a rebuild brief the agent writes to a file", async () => {
+    const info = (await detectClis()).find((c) => c.id === "claude-code");
+    if (!info?.path || info.status === "not-installed") return;
+    const fx = createFixture(); const base = await fx.listen(); const s = await createShadow(proj, { tmp });
+    try {
+      const tsx = path.join(__dirname, "../node_modules/.bin/tsx"); const main = path.join(__dirname, "../src/main.ts");
+      const ev = []; for await (const e of runClaudeAgent(s, { cliPath: info.path, prompt: `Use the MCP server named omniforge: call analyze_url for ${base}/ with max_pages 3, then call rebuild_plan for the returned investigation id with stack "static" and mode "functional". Create a file named brief.txt containing the FIRST LINE of the rebuild_plan result, copied exactly. Then stop.`, maxBudgetUsd: 1, mcpServers: [{ name: "omniforge", command: tsx, args: [main, "mcp", "--allow-private"] }], env: Object.fromEntries(Object.entries(process.env).filter(([k]) => /^(CLAUDE|ANTHROPIC)/.test(k)).map(([k, v]) => [k, String(v)])) })) ev.push(e);
+      expect(ev.at(-1), JSON.stringify(ev.slice(-3))).toMatchObject({ type: "result", ok: true });
+      expect(ev.filter((e) => e.type === "tool").map((e) => (e as { name: string }).name)).toEqual(expect.arrayContaining(["mcp__omniforge__analyze_url", "mcp__omniforge__rebuild_plan"]));
+      expect((await readSides(s, "brief.txt")).next).toMatch(/^Rebuild the application described in the background analysis of “127\.0\.0\.1:\d+” in this folder\./);
+    } finally { await fx.close(); await discardShadow(s); }
+  }, 300_000);
 });
