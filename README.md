@@ -10,6 +10,8 @@ Two apps, one engine and one project format:
 | Local folders, installed apps, REA, AI CLIs, local models, git, terminal | — | ✅ via the local bridge |
 | Credentials | encrypted in the browser (AES-GCM) | macOS Keychain |
 
+**More than a crawler:** page copy is kept as Markdown for faithful rebuilds · jQuery/Angular/lodash/… versions and their known vulnerabilities are identified (retire.js rules) · Python/Java/Go/Rust/C#/TS source is parsed with tree-sitter · minified or obfuscated JS can be made readable in a sandbox (desktop) · a pixel + structure compare checks a rebuild against its reference · your installed **Claude Code** can rebuild or edit a private copy of a folder, with a per-file diff you approve before anything is written, optionally with pinned **MCP** tools · and OmniForge itself is an **MCP server** (`omniforge-bridge mcp`, setup on the Integrations page) so Claude Code, Cursor or Claude Desktop can analyse a site and ask for a rebuild brief.
+
 What is and isn't done, section by section: **[FEATURES.md](FEATURES.md)**. Build history and decisions: **[WORKLOG.md](WORKLOG.md)**.
 
 ## Run it
