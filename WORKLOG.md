@@ -25,5 +25,8 @@ Decisions, what was tried, what failed. Newest last. See FEATURES.md for the sta
 - Compare two investigations; Setup & diagnostics (real probes, downloadable report); dashboard recent activity.
 - CI: e2e failures are now emitted as GitHub annotations so they are readable without log access. Findings: `tsx` missing in a clean install; Chromium logging the sandboxed report iframe refusing a harness-injected script (filtered, sandbox attribute still asserted); macOS bundle failed only at signing because empty `APPLE_*` secrets still define env vars → exported only when set.
 
+## Result of the closing CI runs
+- GitHub Actions on `022d77b`: unit + typecheck + cargo check + **44 e2e passed**. macOS workflow on `7646af1`: both architectures built (Rust compiled on macOS for the first time — the `cfg(macOS)` Keychain code compiled without changes), bundle verification and the arm64 launch smoke test passed.
+
 ## Known gaps / not done
 See FEATURES.md rows marked N or P. Blocked by environment: Vercel deploy to the user's account (connector bound to another team); Apple signing (no certificate); live cloud-model and OSV.dev calls (no keys / egress).
