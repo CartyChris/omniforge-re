@@ -8,6 +8,7 @@ export * from "./crawl/investigate.js";
 export * from "./analyze/html.js";
 export * from "./analyze/js.js";
 export * from "./analyze/fingerprint.js";
+export * from "./analyze/retire.js";
 export * from "./analyze/sourcemap.js";
 export * from "./analyze/archive.js";
 export * from "./analyze/deps.js";

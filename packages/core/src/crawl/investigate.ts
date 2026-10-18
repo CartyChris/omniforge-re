@@ -14,6 +14,7 @@ import { extractCssUrls, extractDesignTokens, extractPage, type ExtractedPage } 
 import { analyzeSourceTree } from "../analyze/source.js";
 import { analyzeJs, type JsAnalysis } from "../analyze/js.js";
 import { fingerprint, mergeTechnologies } from "../analyze/fingerprint.js";
+import { detectLibraries, type DetectedLibrary, type RetireRepository } from "../analyze/retire.js";
 import { decodeInlineSourceMap, parseSourceMap } from "../analyze/sourcemap.js";
 import { depsFromCdnUrls } from "../analyze/deps.js";
 import { findSecretLikeValues } from "../util/redact.js";
@@ -53,6 +54,8 @@ export interface InvestigateOptions {
   renderer?: Renderer;
   /** Optional sandboxed deobfuscation engine (desktop / local worker). Used only when `config.deobfuscate` is on. */
   deobfuscator?: Deobfuscator;
+  /** retire.js repository (parsed with `parseRepository`) used to identify library versions and their known vulnerabilities; omitted = step skipped. */
+  retire?: RetireRepository;
   onUpdate?: (inv: Investigation) => void;
   /** Extra data retained for the UI (screenshots, rendered interactions). */
   onArtifact?: (a: { kind: "screenshot" | "interactions"; url: string; data: unknown }) => void;
@@ -666,6 +669,22 @@ export async function investigate(opts: InvestigateOptions): Promise<Investigati
     }
     inv.technologies = mergeTechnologies(techLists);
     inv.dependencies = depsFromCdnUrls([...assets.values()].filter((a) => a.kind === "script" || a.kind === "style").map((a) => a.url));
+    // Versioned library detection (retire.js rules). Runs entirely on text already collected; the host supplies the rule data.
+    let libs: DetectedLibrary[] = []; const libEv = new Map<DetectedLibrary, string>();
+    if (opts.retire) {
+      say("info", "Identifying JavaScript library versions");
+      libs = detectLibraries(opts.retire, [...assets.values()].filter((a) => a.kind === "script").map((a) => ({ url: a.url, content: jsText.get(a.url) })).concat([...jsText.entries()].filter(([k]) => k.includes("#inline-")).map(([url, content]) => ({ url, content }))));
+      const libTech: Technology[] = [];
+      for (const l of libs) {
+        const ev = addEv({ kind: "observed", method: "retire.js", source: l.url, confidence: l.detection === "uri" ? 0.8 : 0.95, summary: `${l.component} ${l.version} identified from ${l.detection === "uri" ? "its URL" : l.detection === "filename" ? "its file name" : "its contents"}${l.vulnerabilities.length ? `; ${l.vulnerabilities.length} known advisor${l.vulnerabilities.length === 1 ? "y" : "ies"} apply to this version` : ""}` });
+        libTech.push({ name: l.component, category: "JavaScript library", version: l.version, confidence: l.detection === "uri" ? 0.8 : 0.95, evidence: [ev] });
+        if (!inv.dependencies.some((d) => d.name === (l.npmname ?? l.component) && d.version === l.version)) inv.dependencies.push({ name: l.npmname ?? l.component, version: l.version, ecosystem: l.npmname ? "npm" : "cdn", source: l.url, evidence: ev });
+        libEv.set(l, ev);
+      }
+      techLists.push(libTech);
+      inv.technologies = mergeTechnologies(techLists);
+      inv.libraries = libs.map(({ url, ...rest }) => ({ ...rest, source: url }));
+    }
     // Optional sandboxed deobfuscation. Results are RECONSTRUCTED files kept apart from `files` (recovered sources) so they are never analysed or labelled as recovered.
     const reconFiles: SourceFile[] = []; let deobf: Facts["deobfuscation"];
     if (cfg.deobfuscate && opts.deobfuscator) {
@@ -736,6 +755,12 @@ export async function investigate(opts: InvestigateOptions): Promise<Investigati
     const fnd = deriveFindings(facts);
     inv.findings = fnd.findings;
     evidence.push(...fnd.evidence);
+    for (const l of libs) {
+      if (!l.vulnerabilities.length) continue;
+      const rank = ["unknown", "low", "medium", "high", "critical"]; const top = l.vulnerabilities.reduce((m, v) => (rank.indexOf(v.severity) > rank.indexOf(m) ? v.severity : m), "unknown" as DetectedLibrary["vulnerabilities"][number]["severity"]);
+      inv.findings.push({ id: uid("fd"), area: "security", severity: top === "critical" || top === "high" ? "high" : top === "unknown" ? "info" : top, title: `Known vulnerabilities in ${l.component} ${l.version}`, evidence: [libEv.get(l)!].filter(Boolean),
+        detail: `${l.vulnerabilities.length} advisor${l.vulnerabilities.length === 1 ? "y" : "ies"} in the retire.js database apply to this version (identified from ${l.detection === "uri" ? "its URL" : l.detection === "filename" ? "its file name" : "its contents"} at ${l.url}): ${l.vulnerabilities.slice(0, 4).map((v) => `${v.summary}${v.ids.length ? ` (${v.ids.slice(0, 2).join(", ")})` : ""}`).join("; ")}${l.vulnerabilities.length > 4 ? "; …" : ""}. A match means this version is in an affected range, not that the site is exploitable.` });
+    }
     const cov = computeCoverage(facts, cfg);
     inv.coverage = cov.coverage;
     inv.limitations = cov.limitations;

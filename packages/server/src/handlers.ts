@@ -6,6 +6,7 @@
 import { analyzeSnapshot, assessRip, detectLicense, fetchRepoSnapshot, investigate, parseRepoRef, RepoRefError, effective, validateUrl, BlockedUrlError, type CrawlConfig, type FetchRepoOptions, type Investigation, type Renderer, type Deobfuscator } from "@omniforge/core";
 import { HttpError, bytesToB64, err, json, readJson, sse } from "./http.js";
 import { nodeNet } from "./net.js";
+import { loadRetireRepository } from "./retire.js";
 
 export type Mode = "hosted" | "local";
 export interface HandlerOptions {
@@ -16,6 +17,7 @@ export interface HandlerOptions {
   /** Sandboxed deobfuscation engine (local mode only; used when the request's config turns it on). */
   deobfuscator?: Deobfuscator;
   /** Test hooks. */
+  retireFetch?: typeof fetch; retireUrl?: string;
   repoFetch?: Partial<FetchRepoOptions>;
   net?: ReturnType<typeof nodeNet>;
 }
@@ -61,10 +63,12 @@ export async function analyzeHandler(req: Request, o: HandlerOptions): Promise<R
     let sentPages = 0;
     let sentLog = 0;
     try {
+      const retire = config.identifyLibraries === false ? undefined : await loadRetireRepository({ fetch: o.retireFetch ?? ((u, i) => nodeNet({ allowPrivate: false }).fetch(u, i)), url: o.retireUrl });
       const inv = await investigate({
         targets, name: body.name, config, fetch: net.fetch as never, dispatcher: net.dispatcher, resolver: net.resolver, allowPrivate: net.allowPrivate, signal: ctrl.signal,
         renderer: o.mode === "local" ? o.renderer : undefined,
         deobfuscator: o.mode === "local" ? o.deobfuscator : undefined,
+        retire: retire?.repo,
         onUpdate: (i: Investigation) => {
           const pages = i.pages.slice(sentPages).map((p) => ({ id: p.id, url: p.url, status: p.status, title: p.title, depth: p.depth, via: p.discoveredVia, from: p.discoveredFrom }));
           sentPages = i.pages.length;
@@ -73,6 +77,7 @@ export async function analyzeHandler(req: Request, o: HandlerOptions): Promise<R
           send("update", { id: i.id, status: i.status, progress: i.progress, counts: { pages: i.pages.length, assets: i.assets.length, evidence: i.evidence.length }, pages, log });
         },
       });
+      if (retire?.error) inv.limitations.push(`Library version detection was skipped: ${retire.error}.`);
       if (timedOut) {
         inv.status = "done";
         inv.limitations.unshift(`Time budget of ${Math.round(budget / 1000)} s reached: results are partial. Use the desktop app for deep crawls.`);

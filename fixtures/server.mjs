@@ -1,6 +1,7 @@
 // Controlled multi-page test site. Every page, asset and quirk here is deliberate,
 // so tests can assert EXACTLY what a correct crawler must (and must not) find.
 import http from "node:http";
+import fs from "node:fs";
 
 const page = (title, body, extraHead = "") => `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title>
 <meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="${title} page">
@@ -18,6 +19,8 @@ export const PAGES = {
   "/products/gadget": page("Gadget", `<p>A gadget</p><dialog id="d"><p>Hi</p></dialog>`),
   "/login": page("Login", `<form action="/api/login" method="post"><label for="e">Email</label><input id="e" name="email" type="email" required><label for="p">Password</label><input id="p" name="password" type="password" required><button>Sign in</button></form>`),
   "/contact": page("Contact", `<form action="/api/contact" method="post"><input name="name" placeholder="Name"><textarea name="msg" aria-label="Message"></textarea><input type="file" name="attachment" aria-label="File"><button>Send</button></form>`),
+  // Not linked from anywhere: only reached when a test targets it. Loads real, unmodified library files so version detection is tested on genuine bytes.
+  "/legacy": `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Legacy</title></head><body><h1>Legacy</h1><script src="/static/vendor/jquery-1.12.4.min.js"></script><script src="/static/vendor/site-bundle.js"></script></body></html>`,
   "/privacy": page("Privacy", `<p>Privacy</p>`),
   "/docs/getting-started": page("Getting started", `<p>Docs</p><a href="/docs/getting-started">self</a>`),
   "/sitemap-only": page("Sitemap only", `<p>Only reachable via sitemap.xml</p>`),
@@ -54,6 +57,7 @@ export function createFixture() {
     if (url.pathname === "/redirect-me") return send(302, "text/plain", "", { location: "/products/widget" });
     if (url.pathname === "/redirect-offsite") return send(302, "text/plain", "", { location: "http://169.254.169.254/latest/meta-data/" });
     if (url.pathname === "/static/app.js") return send(200, "application/javascript", JS, { "cache-control": "max-age=3600" });
+    if (url.pathname.startsWith("/static/vendor/")) { const f = url.pathname.split("/").pop(); const real = { "jquery-1.12.4.min.js": "packages/core/test/fixtures/retire/jquery-1.12.4.min.js" }[f]; return real ? send(200, "application/javascript", fs.readFileSync(new URL("../" + real, import.meta.url))) : send(200, "application/javascript", "window.siteBundle = function(){ return 1; };"); }
     if (url.pathname === "/static/app.js.map") return send(200, "application/json", MAP);
     if (url.pathname === "/static/app.css") return send(200, "text/css", CSS);
     if (url.pathname === "/static/logo.svg") return send(200, "image/svg+xml", "<svg xmlns='http://www.w3.org/2000/svg'/>", { "content-length": "39" });

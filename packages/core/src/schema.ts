@@ -209,6 +209,8 @@ export interface CrawlConfig {
   followSitemaps: boolean;
   render: boolean; // headless rendering (local worker / desktop only)
   deobfuscate: boolean; // unminify / deobfuscate / split bundles in a sandbox (local worker / desktop only)
+  /** Identify library versions (and their known vulnerabilities) with the retire.js rules. Contacts a public GitHub-hosted data file, never the target. */
+  identifyLibraries: boolean;
   userAgent: string;
   allowedHosts: string[];
 }
@@ -227,6 +229,7 @@ export const DEFAULT_CRAWL: CrawlConfig = {
   followSitemaps: true,
   render: false,
   deobfuscate: false,
+  identifyLibraries: true,
   userAgent: "OmniForgeRE/1.0 (+https://github.com/CartyChris/omniforge-re; analysis crawler)",
   allowedHosts: [],
 };
@@ -284,6 +287,8 @@ export interface Investigation {
   /** Functions, classes, methods… parsed from source in any supported language (see analyze/structure.ts). */
   symbols?: { name: string; kind: string; file: string; line: number; language: string; container?: string }[];
   summary?: string; // optional AI-written overview (labelled as such in UI)
+  /** JavaScript libraries identified by version (retire.js rules), with the advisories whose ranges contain that version. */
+  libraries?: { component: string; npmname?: string; version: string; detection: "uri" | "filename" | "filecontent" | "filecontentreplace"; source: string; vulnerabilities: { severity: "critical" | "high" | "medium" | "low" | "unknown"; summary: string; ids: string[]; below?: string; atOrAbove?: string; info: string[] }[] }[];
   /** Result of an explicit OSV.dev check of exact-version dependencies (see integrations/osv.ts). */
   vulnerabilities?: { checkedAt: string; checked: number; skipped: number; items: Vulnerability[] };
 }

@@ -2,6 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 // @ts-expect-error plain ESM fixture shared with the e2e suite
 import { createFixture } from "../../../fixtures/server.mjs";
 import { investigate } from "../src/crawl/investigate";
+import { parseRepository } from "../src/analyze/retire";
+import fs from "node:fs";
 import { BlockedUrlError } from "../src/net/ssrf";
 import { safeFetch } from "../src/net/fetch";
 import type { Investigation } from "../src/schema";
@@ -165,4 +167,25 @@ describe("SSRF at the pipeline boundary", () => {
   it("blocks a hostname that resolves to a private address", async () => {
     await expect(investigate({ targets: ["https://rebind.example.com/"], resolver: async () => ["10.1.2.3"], fetch: (async () => new Response("")) as never })).resolves.toMatchObject({ pages: [] });
   });
+});
+
+describe("library version detection during a crawl (retire.js rules supplied by the host)", () => {
+  const { repo } = parseRepository(JSON.parse(fs.readFileSync(new URL("./fixtures/retire/jsrepository-excerpt.json", import.meta.url), "utf8")));
+  it("identifies the real jQuery 1.12.4 file, records evidence, a dependency, a technology and a security finding that cites it", async () => {
+    const inv = await investigate({ targets: [base + "/legacy"], allowPrivate: true, config: { delayMs: 0, concurrency: 2, maxPages: 1 }, retire: repo });
+    expect(inv.libraries).toEqual([expect.objectContaining({ component: "jquery", version: "1.12.4", detection: "filecontent", source: `${base}/static/vendor/jquery-1.12.4.min.js` })]);
+    expect(inv.libraries![0]!.vulnerabilities.flatMap((v) => v.ids)).toContain("CVE-2020-11022");
+    expect(inv.technologies.find((t) => t.name === "jquery")).toMatchObject({ version: "1.12.4", category: "JavaScript library" });
+    expect(inv.dependencies).toContainEqual(expect.objectContaining({ name: "jquery", version: "1.12.4", ecosystem: "npm" }));
+    const f = inv.findings.find((x) => x.title === "Known vulnerabilities in jquery 1.12.4")!;
+    expect(f).toMatchObject({ area: "security", severity: "medium", detail: expect.stringMatching(/not that the site is exploitable/) });
+    const ev = inv.evidence.find((e) => f.evidence.includes(e.id))!;
+    expect(ev).toMatchObject({ kind: "observed", method: "retire.js" });
+    expect(inv.libraries!.some((l) => l.component !== "jquery")).toBe(false); // the plain bundle is not mislabelled
+  }, 60_000);
+  it("is skipped (no libraries field, no findings of that kind) when the host supplies no rules", async () => {
+    const inv = await investigate({ targets: [base + "/legacy"], allowPrivate: true, config: { delayMs: 0, concurrency: 2, maxPages: 1 } });
+    expect(inv.libraries).toBeUndefined();
+    expect(inv.findings.some((f) => f.title.startsWith("Known vulnerabilities in"))).toBe(false);
+  }, 60_000);
 });
