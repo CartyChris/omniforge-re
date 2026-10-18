@@ -29,7 +29,7 @@ jobs:
           curl -fsSL https://bun.sh/install | bash && echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.bun/bin:$PATH"
           pnpm --filter @omniforge/desktop sidecar -- --host
-          node apps/desktop/scripts/smoke-engine.mjs apps/desktop/src-tauri/binaries/omniforge-bridge-x86_64-unknown-linux-gnu
+          node apps/desktop/scripts/smoke-engine.mjs apps/desktop/src-tauri/binaries/omniforge-bridge-x86_64-unknown-linux-gnu apps/desktop/src-tauri/resources/tree-sitter
           cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml
       - name: End-to-end (production build, fixture site, scripted model, real engine)
         run: pnpm --filter @omniforge/web e2e

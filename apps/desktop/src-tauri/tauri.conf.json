@@ -47,7 +47,8 @@
       "binaries/omniforge-bridge"
     ],
     "resources": {
-      "resources/playwright-core": "playwright-core"
+      "resources/playwright-core": "playwright-core",
+      "resources/tree-sitter": "tree-sitter"
     },
     "macOS": {
       "minimumSystemVersion": "11.0",

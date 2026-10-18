@@ -15,3 +15,12 @@ export const noErrors = (errors: string[]) => expect(errors, errors.join("\n")).
 /** The scripted mock model + providers/routing preseeded so every task kind uses it (the real Claude CLI may exist on a dev machine). */
 export const mockModelSettings = { assignments: Object.fromEntries(["classify", "extract", "summarize", "architecture", "code", "review", "vision", "embed", "research", "test"].map((k) => [k, "mock::mock-scripted-coder"])) };
 export const mockProvider = [{ id: "mock", label: "Scripted mock model", kind: "openai-compat", preset: "custom", baseUrl: "http://127.0.0.1:4599/v1", local: true, enabled: true }];
+
+/** Serve every response with the production CSP so a test proves a feature works under the policy Vercel enforces (vite preview sends none). */
+export async function underProductionCsp(page: Page) {
+  const { CSP } = await import("../scripts/csp.mjs");
+  await page.route("**/*", async (route) => {
+    const res = await route.fetch();
+    await route.fulfill({ response: res, headers: { ...res.headers(), "content-security-policy": CSP } });
+  });
+}

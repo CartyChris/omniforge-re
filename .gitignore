@@ -21,3 +21,4 @@ apps/desktop/src-tauri/icons/source.png
 # deep-research working folders (final report is copied to docs/)
 research_notes/
 reports/
+apps/desktop/src-tauri/resources/tree-sitter/

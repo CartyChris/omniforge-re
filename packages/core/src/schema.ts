@@ -276,11 +276,13 @@ export interface Investigation {
   /** UI components seen in JS (AST) or recovered source. */
   components?: { name: string; source: string; provenance: EvidenceKind }[];
   /** Route strings with where they were seen. */
-  routes?: { route: string; source: string; via: "link" | "sitemap" | "bundle" | "file-system" }[];
+  routes?: { route: string; source: string; via: "link" | "sitemap" | "bundle" | "file-system" | "code" }[];
   designTokens?: { variables: Record<string, string>; colors: { value: string; count: number }[]; fonts: { value: string; count: number }[] };
   /** Third-party hosts contacted by pages/assets, with what they were loaded for. */
   thirdParties?: { host: string; kinds: string[]; count: number }[];
   envVars?: { name: string; files: string[] }[];
+  /** Functions, classes, methods… parsed from source in any supported language (see analyze/structure.ts). */
+  symbols?: { name: string; kind: string; file: string; line: number; language: string; container?: string }[];
   summary?: string; // optional AI-written overview (labelled as such in UI)
   /** Result of an explicit OSV.dev check of exact-version dependencies (see integrations/osv.ts). */
   vulnerabilities?: { checkedAt: string; checked: number; skipped: number; items: Vulnerability[] };

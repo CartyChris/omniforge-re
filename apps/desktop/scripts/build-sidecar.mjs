@@ -46,3 +46,15 @@ const dest = path.join(res, "playwright-core");
 fs.rmSync(dest, { recursive: true, force: true });
 fs.cpSync(pwDir, dest, { recursive: true, dereference: true, filter: (s) => !/[\\/](?:\.bin|\.cache)(?:[\\/]|$)/.test(s) });
 console.log(`  ✓ playwright-core ${JSON.parse(fs.readFileSync(path.join(dest, "package.json"), "utf8")).version} → ${path.relative(root, dest)}`);
+
+// tree-sitter runtime + grammars as a plain resource folder (the engine reads them lazily via OMNIFORGE_GRAMMARS)
+const sreq = createRequire(path.join(root, "packages/structure/package.json"));
+const wts = path.dirname(sreq.resolve("web-tree-sitter"));
+const vsc = path.join(path.dirname(sreq.resolve("@vscode/tree-sitter-wasm/package.json")), "wasm");
+const gdest = path.join(res, "tree-sitter");
+fs.rmSync(gdest, { recursive: true, force: true }); fs.mkdirSync(gdest, { recursive: true });
+const FILES = { "web-tree-sitter.wasm": path.join(wts, "web-tree-sitter.wasm") };
+for (const f of ["python", "javascript", "typescript", "tsx", "go", "java", "rust", "c-sharp"]) FILES[`tree-sitter-${f}.wasm`] = path.join(vsc, `tree-sitter-${f}.wasm`);
+for (const [name, src] of Object.entries(FILES)) fs.copyFileSync(src, path.join(gdest, name));
+fs.copyFileSync(path.join(vsc, "../LICENSE"), path.join(gdest, "LICENSE-vscode-tree-sitter-wasm.txt"));
+console.log(`  ✓ tree-sitter runtime + ${Object.keys(FILES).length - 1} grammars → ${path.relative(root, gdest)}`);

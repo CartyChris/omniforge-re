@@ -91,6 +91,7 @@ jobs:
           lipo -info "$APP/Contents/MacOS/omniforge-re" | grep -q "${{ matrix.arch }}" || { echo "::error::main binary is not ${{ matrix.arch }}"; exit 1; }
           lipo -info "$APP/Contents/MacOS/omniforge-bridge" | grep -q "${{ matrix.arch }}" || { echo "::error::engine is not ${{ matrix.arch }}"; exit 1; }
           echo "--- resources"; test -f "$APP/Contents/Resources/playwright-core/index.mjs" || { echo "::error::playwright-core resource missing"; exit 1; }
+          test -f "$APP/Contents/Resources/tree-sitter/web-tree-sitter.wasm" && test -f "$APP/Contents/Resources/tree-sitter/tree-sitter-python.wasm" || { echo "::error::tree-sitter grammars resource missing"; exit 1; }
           test -f "$APP/Contents/Resources/icon.icns" || { echo "::error::icon missing"; exit 1; }
           /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP/Contents/Info.plist" | grep -qx "com.omniforge.re"
           /usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$APP/Contents/Info.plist"
@@ -119,7 +120,7 @@ jobs:
           # access control is live: unauthenticated calls are refused
           test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/bridge/info")" = "401"
           # the sandboxed deobfuscation path (webcrack + QuickJS-WASM) works inside THIS compiled macOS engine, not just on Linux
-          node apps/desktop/scripts/smoke-engine.mjs "$APP/Contents/MacOS/omniforge-bridge"
+          node apps/desktop/scripts/smoke-engine.mjs "$APP/Contents/MacOS/omniforge-bridge" "$APP/Contents/Resources/tree-sitter"
           if grep -q "ui: UI could not reach the engine" "$LOG"; then echo "::error::the UI could not reach the engine"; cat "$LOG"; kill $PID || true; exit 1; fi
           kill $PID; sleep 2
           pgrep -f omniforge-bridge && { echo "::error::engine outlived the app"; exit 1; } || echo "engine stopped with the app"

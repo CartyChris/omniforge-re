@@ -41,6 +41,9 @@ importers:
       '@omniforge/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@omniforge/structure':
+        specifier: workspace:*
+        version: link:../../packages/structure
       '@radix-ui/react-checkbox':
         specifier: ^1.3.3
         version: 1.4.1(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -202,6 +205,9 @@ importers:
       '@omniforge/core':
         specifier: workspace:*
         version: link:../core
+      '@omniforge/structure':
+        specifier: workspace:*
+        version: link:../structure
       pixelmatch:
         specifier: ^8.0.0
         version: 8.0.0
@@ -236,6 +242,28 @@ importers:
       tsx:
         specifier: ^4.20.0
         version: 4.23.15
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@22.20.5)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1)
+
+  packages/structure:
+    dependencies:
+      '@omniforge/core':
+        specifier: workspace:*
+        version: link:../core
+      '@vscode/tree-sitter-wasm':
+        specifier: 0.3.1
+        version: 0.3.1
+      web-tree-sitter:
+        specifier: 0.27.1
+        version: 0.27.1
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.5
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -1679,6 +1707,9 @@ packages:
   '@vitest/utils@3.2.7':
     resolution: {integrity: sha512-x6BDOd7dyo3PFLY3I9/HJ25X/6OurhGXk2/B9gOZNPF7XDVjeBK4k01lQE5uvDpbuheErh91qYuE1E2OEjK3Rw==}
 
+  '@vscode/tree-sitter-wasm@0.3.1':
+    resolution: {integrity: sha512-RJFoomET6FajjG511fmQxeBQfU6M24a0aFZPqpid+ttIxanWf1VGytBG0UmsGjt07qmIPJS8U31D+aecuCucsQ==}
+
   '@xmldom/xmldom@0.9.12':
     resolution: {integrity: sha512-5AXjrcMClTryPe9LgZrygpB1lj7s0S9E0+W+AHaVKAVyHanafK86iPSvG5xHVSp/jC+VH1UXu0TAEmY279xH7A==}
     engines: {node: '>=14.6'}
@@ -3008,6 +3039,9 @@ packages:
 
   w3c-keyname@2.2.8:
     resolution: {integrity: sha512-dpojBhNsCNN7T82Tm7k26A6G9ML3NkhDsnw9n/eoxSRlVBB4CEtIQ/KTCLI2Fwf3ataSXRhYFkQi3SlnFwPvPQ==}
+
+  web-tree-sitter@0.27.1:
+    resolution: {integrity: sha512-qtx0VyUyNRHtL3ze7+v0hCKB/sLcAmY7ZAVp/ZK/bCj0yED8ptvNrr7Vd7DwDyKDWN9baqcUx4uaD2r2ql+6IA==}
 
   webcrack@2.16.0:
     resolution: {integrity: sha512-sQx0otp+7W8MgOWjdpc+5dqGna1GRK4tx55SyRohtq4g4A1aXbqu0TLfqvIsY/PllBZgSfvV5h0nDE0iwC8gbA==}
@@ -4473,6 +4507,8 @@ snapshots:
       loupe: 3.2.1
       tinyrainbow: 2.0.0
 
+  '@vscode/tree-sitter-wasm@0.3.1': {}
+
   '@xmldom/xmldom@0.9.12': {}
 
   '@xterm/addon-serialize@0.14.0': {}
@@ -5827,6 +5863,8 @@ snapshots:
       - yaml
 
   w3c-keyname@2.2.8: {}
+
+  web-tree-sitter@0.27.1: {}
 
   webcrack@2.16.0:
     dependencies:

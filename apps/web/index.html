@@ -7,10 +7,7 @@
     <meta name="theme-color" content="#0b0d12" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>OmniForge RE</title>
-    <script>
-      // apply the saved theme before first paint (no flash)
-      try { var t = localStorage.getItem("omniforge.theme"); if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) {}
-    </script>
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

@@ -3,10 +3,13 @@
  * Smoke test of a COMPILED engine binary: starts it, serves an obfuscator.io-obfuscated script from a local site, runs a local analysis with
  * deobfuscation on, and fails unless the engine returns a reconstructed readable file, an endpoint only visible after deobfuscation, and a
  * "done" coverage check. Proves the sandboxed webcrack + QuickJS path works inside the Bun-compiled binary on this OS/architecture.
- *   node smoke-engine.mjs <path-to-omniforge-bridge-binary>
+ * It then analyses a small FastAPI + Spring + Go project folder and fails unless the tree-sitter grammars (read from the app's resource folder)
+ * produce the expected HTTP routes — proving both assets and parser work inside the compiled binary.
+ *   node smoke-engine.mjs <path-to-omniforge-bridge-binary> [path-to-tree-sitter-resources]
  */
 import http from "node:http";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -22,7 +25,8 @@ const site = http.createServer((q, r) => {
 await new Promise((r) => site.listen(0, "127.0.0.1", r));
 const base = `http://127.0.0.1:${site.address().port}`;
 const TOKEN = "smoke-token-0123456789abcdef0123456789", PORT = 4000 + Math.floor(Math.random() * 3000);
-const child = spawn(bin, ["--port", String(PORT)], { env: { ...process.env, OMNIFORGE_UI_TOKEN: TOKEN, OMNIFORGE_ALLOWED_ORIGINS: "tauri://localhost" }, cwd: process.env.TMPDIR || "/tmp" });
+const grammars = process.argv[3] ? path.resolve(process.argv[3]) : undefined;
+const child = spawn(bin, ["--port", String(PORT)], { env: { ...process.env, OMNIFORGE_UI_TOKEN: TOKEN, OMNIFORGE_ALLOWED_ORIGINS: "tauri://localhost", ...(grammars ? { OMNIFORGE_GRAMMARS: grammars } : {}) }, cwd: process.env.TMPDIR || "/tmp" });
 let log = ""; child.stdout.on("data", (d) => (log += d)); child.stderr.on("data", (d) => (log += d));
 const fail = (m) => { console.error(`✗ ${m}\n--- engine output\n${log.slice(0, 1500)}`); child.kill(); site.close(); process.exit(1); };
 let up = false;
@@ -40,6 +44,21 @@ const problems = [
   !inv.endpoints.some((e) => e.url.endsWith("/api/checkout")) && "endpoint hidden by obfuscation was not found",
   check?.status !== "done" && `coverage check is ${check?.status}: ${check?.detail}`,
 ].filter(Boolean);
+
+// --- multi-language structure through the compiled engine
+const proj = fs.mkdtempSync(path.join(os.tmpdir(), "omni-smoke-"));
+fs.writeFileSync(path.join(proj, "main.py"), 'from fastapi import FastAPI\napp = FastAPI()\n@app.get("/users/{id}")\ndef get_user(id: int):\n    return 1\n');
+fs.writeFileSync(path.join(proj, "Ctl.java"), '@RestController\n@RequestMapping("/api")\nclass Ctl {\n  @GetMapping("/ping") String ping() { return ""; }\n}\n');
+fs.writeFileSync(path.join(proj, "srv.go"), 'package main\nfunc main() { r.GET("/health", h) }\n');
+const H = { authorization: `Bearer ${TOKEN}`, origin: "tauri://localhost", "content-type": "application/json", "x-omniforge-bridge": "1" };
+const rootRes = await fetch(`http://127.0.0.1:${PORT}/bridge/roots`, { method: "POST", headers: H, body: JSON.stringify({ path: proj }) });
+const root = await rootRes.json();
+const folderRes = await fetch(`http://127.0.0.1:${PORT}/bridge/analyze-folder`, { method: "POST", headers: H, body: JSON.stringify({ root: root.id }) });
+const folder = folderRes.ok ? await folderRes.json() : null;
+const got = (folder?.endpoints ?? []).map((e) => `${e.method} ${e.url}`).sort();
+const want = ["GET /api/ping", "GET /health", "GET /users/{id}"];
+if (JSON.stringify(got) !== JSON.stringify(want)) problems.push(`tree-sitter routes: got ${JSON.stringify(got)}, wanted ${JSON.stringify(want)}; structure check: ${JSON.stringify(folder?.coverage?.checks?.find((c) => c.id === "structure"))}`);
+fs.rmSync(proj, { recursive: true, force: true });
 child.kill(); site.close();
 if (problems.length) { console.error(`✗ deobfuscation smoke test failed:\n  - ${problems.join("\n  - ")}`); process.exit(1); }
-console.log(`✓ ${path.basename(bin)}: deobfuscation works in the compiled engine (${f.path}, ${f.bytes} bytes)`);
+console.log(`✓ ${path.basename(bin)}: deobfuscation and tree-sitter route extraction work in the compiled engine (${f.path}, ${f.bytes} bytes; routes ${want.join(", ")})`);

@@ -1,12 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { noErrors, prepare } from "./helpers";
+import { noErrors, prepare, underProductionCsp } from "./helpers";
 
 const ROUTES = ["", "analyze", "repo-rip", "investigations", "applications", "features", "studio", "workspace", "models", "integrations", "deployments", "settings"];
 
 for (const r of ROUTES) {
-  test(`/${r || "dashboard"}: renders, no console errors, no horizontal scroll, no serious a11y violations`, async ({ page }) => {
+  test(`/${r || "dashboard"}: renders under the production CSP, no console errors, no horizontal scroll, no serious a11y violations`, async ({ page }) => {
     const errors = await prepare(page);
+    await underProductionCsp(page);
     await page.goto(`/#/${r}`);
     await page.waitForLoadState("networkidle");
     await expect(page.locator("main")).toBeVisible();

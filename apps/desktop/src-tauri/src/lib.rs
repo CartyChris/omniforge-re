@@ -77,6 +77,11 @@ fn start_engine(app: &AppHandle) -> Result<(), String> {
         .resource_dir()
         .map_err(|e| e.to_string())?
         .join("playwright-core");
+    let grammars = app
+        .path()
+        .resource_dir()
+        .map_err(|e| e.to_string())?
+        .join("tree-sitter");
     let mut cmd = app
         .shell()
         .sidecar("omniforge-bridge")
@@ -87,6 +92,9 @@ fn start_engine(app: &AppHandle) -> Result<(), String> {
         .env("OMNIFORGE_ALLOWED_ORIGINS", origins.join(","));
     if pw.exists() {
         cmd = cmd.env("OMNIFORGE_PLAYWRIGHT", pw.to_string_lossy().to_string());
+    }
+    if grammars.exists() {
+        cmd = cmd.env("OMNIFORGE_GRAMMARS", grammars.to_string_lossy().to_string());
     }
     let (mut rx, child) = cmd.spawn().map_err(|e| format!("could not start the engine: {e}"))?;
     let state = app.state::<BridgeState>();

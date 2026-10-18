@@ -7,6 +7,7 @@ import { DEFAULT_CRAWL } from "../schema.js";
 import type { Evidence, Feature, Finding, Investigation, Technology } from "../schema.js";
 import { hashStr, now, uid } from "../util/index.js";
 import { analyzeSourceTree, type InputFile, type SourceTreeAnalysis } from "./source.js";
+import { capSymbols, routeEndpoints, structureCandidates, type StructureExtractor, type StructureResult } from "./structure.js";
 import { fingerprint, mergeTechnologies } from "./fingerprint.js";
 import { analyzeTechnicalArtifacts } from "./artifacts.js";
 
@@ -30,7 +31,7 @@ const DEP_TECH: Record<string, { name: string; category: string }> = {
   fastapi: { name: "FastAPI", category: "Web framework" }, django: { name: "Django", category: "Web framework" }, rails: { name: "Ruby on Rails", category: "Web framework" }, "spring-boot-starter-web": { name: "Spring Boot", category: "Web framework" },
 };
 
-export async function investigateSource(name: string, inputs: InputFile[], o: { kind?: "files" | "archive" | "repo" | "folder"; origin?: string } = {}): Promise<Investigation> {
+export async function investigateSource(name: string, inputs: InputFile[], o: { kind?: "files" | "archive" | "repo" | "folder"; origin?: string; structure?: StructureExtractor } = {}): Promise<Investigation> {
   const startedAt = now();
   const tree: SourceTreeAnalysis = await analyzeSourceTree(inputs);
   const evidence: Evidence[] = [];
@@ -88,6 +89,15 @@ export async function investigateSource(name: string, inputs: InputFile[], o: { 
   const art = analyzeTechnicalArtifacts(inputs);
   evidence.push(...art.evidence); features.push(...art.features);
 
+  // multi-language structure (symbols + HTTP routes) from a real parser, when the host provides one
+  let st: StructureResult | undefined; let stError: string | undefined;
+  if (o.structure) { try { st = await o.structure.extract(structureCandidates(tree.files)); } catch (e) { stError = (e as Error).message; } }
+  const codeEndpoints = st ? routeEndpoints(st, ev) : [];
+  if (st && codeEndpoints.length) {
+    const routeFiles = [...new Set(st.files.filter((f) => f.routes.length).map((f) => f.path))];
+    addFeature("HTTP API surface (parsed from source)", "Backend", `${codeEndpoints.length} route(s) defined in ${routeFiles.length} file(s)`, routeFiles, codeEndpoints.slice(0, 20).map((e) => e.evidence), "Serve these HTTP routes. Request and response shapes are not captured by static route parsing.");
+  }
+
   // findings
   const findings: Finding[] = [...art.findings];
   const fnd = (area: Finding["area"], severity: Finding["severity"], title: string, detail: string, source: string) => findings.push({ id: uid("fd"), area, severity, title, detail, evidence: [ev({ kind: "observed", method: "file-scan", source, confidence: 1, summary: title })] });
@@ -103,6 +113,8 @@ export async function investigateSource(name: string, inputs: InputFile[], o: { 
     { id: "imports", label: "Import graph built", status: tree.graph.edges.length ? "done" : "partial", detail: `${tree.graph.edges.length} import edge(s)` },
     { id: "secrets", label: "Secret scan (names only)", status: "done", detail: `${tree.secretFiles.length} file(s) flagged` },
     ...(art.found.length ? [{ id: "artifacts", label: "Technical artifacts parsed", status: (art.notes.length ? "partial" : "done") as "done" | "partial", detail: art.found.map((a) => `${a.kind} ${a.path} (${a.detail})`).join("; ").slice(0, 300) }] : []),
+    ...(st ? [{ id: "structure", label: "Code structure parsed (tree-sitter)", status: (st.failed.length || (st.parsed === 0 && st.unsupported > 0) ? "partial" : "done") as "done" | "partial", detail: st.parsed ? `${st.parsed} file(s) in ${st.languages.join(", ")} parsed: ${st.files.reduce((n, f) => n + f.symbols.length, 0)} symbols, ${codeEndpoints.length} HTTP route(s)${st.failed.length ? `; ${st.failed.length} file(s) failed to parse` : ""}${st.unsupported ? `; ${st.unsupported} file(s) in unsupported languages not parsed` : ""}` : "No files in a supported language (Python, JavaScript/TypeScript, Go, Java, Rust, C#)" }]
+      : stError || (!o.structure && tree.files.some((f) => /\.(?:py|go|java|rs|cs)$/i.test(f.path))) ? [{ id: "structure", label: "Code structure parsed (tree-sitter)", status: "unavailable" as const, detail: stError ?? "The structure parser is not available in this environment (it runs in the hosted service and the desktop app); symbols and routes in Python, Go, Java, Rust and C# were not extracted" }] : []),
     { id: "runtime", label: "Runtime behaviour observed", status: "skipped", detail: "Source was read, not executed. Behaviour specs list unobserved states as Unknown." },
     { id: "server", label: "Server-side logic", status: tree.files.length ? "partial" : "unavailable", detail: tree.files.length ? "Read from source where present in this tree" : "No source provided" },
   ];
@@ -112,13 +124,14 @@ export async function investigateSource(name: string, inputs: InputFile[], o: { 
   const files = tree.files.map((f) => ({ ...f, content: f.content }));
   const inv: Investigation = {
     id: uid("inv"), name, targets: [{ id: uid("tg"), kind: o.kind ?? "files", value: o.origin ?? name, addedAt: startedAt }], config: { ...DEFAULT_CRAWL, mode: "single", fetchAssets: false }, status: "done",
-    startedAt, finishedAt: now(), progress: 1, pages: [], assets: [], technologies: mergeTechnologies([techs, fp.technologies, art.technologies]), files, dependencies: [...tree.dependencies, ...art.dependencies], endpoints: [...art.endpoints, ...tree.endpoints].map((e) => ("foundIn" in e ? e : { url: e.url, method: e.method, kind: /graphql/i.test(e.url) ? "graphql" as const : /^wss?:/.test(e.url) ? "websocket" as const : "rest" as const, foundIn: e.file, evidence: "" })),
+    startedAt, finishedAt: now(), progress: 1, pages: [], assets: [], technologies: mergeTechnologies([techs, fp.technologies, art.technologies]), files, dependencies: [...tree.dependencies, ...art.dependencies], endpoints: [...art.endpoints, ...tree.endpoints].map((e) => ("foundIn" in e ? e : { url: e.url, method: e.method, kind: /graphql/i.test(e.url) ? "graphql" as const : /^wss?:/.test(e.url) ? "websocket" as const : "rest" as const, foundIn: e.file, evidence: "" })).filter((e) => !codeEndpoints.some((c) => c.url === e.url && c.foundIn.split(":")[0] === e.foundIn)).concat(codeEndpoints), // the parsed route supersedes the older method-less reference from the same file
     features, findings, evidence, graph: tree.graph, coverage: { score: Math.round(score * 100) / 100, checks },
     limitations: [...art.notes, ...checks.filter((c) => c.status === "skipped" || c.status === "unavailable").map((c) => `${c.label}: ${c.detail}`), ...(tree.binaries.length ? [`${tree.binaries.length} binary file(s) were inventoried but not decompiled; use the desktop app's REA integration for binaries.`] : [])],
     thirdParties: art.thirdParties.length ? art.thirdParties : undefined, questions: tree.envVars.length ? ["Which environment variables are required at runtime? Names found: " + tree.envVars.slice(0, 12).map((e) => e.name).join(", ")] : [],
     log: [{ t: now(), level: "info", msg: `Analysed ${tree.files.length} file(s): ${tree.languages.slice(0, 3).map((l) => `${l.language} ${l.lines}L`).join(", ")}` }],
     components: tree.components.map((c) => ({ name: c.name, source: c.file, provenance: "recovered" as const })),
-    routes: tree.routes.map((r) => ({ route: r.route, source: r.file, via: "file-system" as const })), envVars: tree.envVars,
+    routes: [...tree.routes.map((r) => ({ route: r.route, source: r.file, via: "file-system" as const })), ...(st ? st.files.flatMap((f) => f.routes.map((r) => ({ route: r.path, source: `${r.file}:${r.line}`, via: "code" as const }))) : [])], envVars: tree.envVars,
+    ...(st ? { symbols: capSymbols(st) } : {}),
   };
   return inv;
 }

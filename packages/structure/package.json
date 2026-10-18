@@ -1,0 +1,15 @@
+{
+  "name": "@omniforge/structure",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Multi-language symbol and HTTP-route extraction with tree-sitter (Node, Bun and browser loaders)",
+  "exports": {
+    ".": { "types": "./src/index.ts", "default": "./src/index.ts" },
+    "./node": { "types": "./src/node.ts", "default": "./src/node.ts" },
+    "./browser": { "types": "./src/browser.ts", "default": "./src/browser.ts" }
+  },
+  "scripts": { "typecheck": "tsc -p tsconfig.json --noEmit", "test": "vitest run" },
+  "dependencies": { "@omniforge/core": "workspace:*", "@vscode/tree-sitter-wasm": "0.3.1", "web-tree-sitter": "0.27.1" },
+  "devDependencies": { "@types/node": "^22.10.0", "typescript": "^5.9.3", "vitest": "^3.2.4" }
+}

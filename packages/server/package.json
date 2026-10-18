@@ -15,6 +15,7 @@
   "dependencies": {
     "@jitl/quickjs-singlefile-mjs-release-sync": "0.32.0",
     "@omniforge/core": "workspace:*",
+    "@omniforge/structure": "workspace:*",
     "pixelmatch": "^8.0.0",
     "playwright-core": "^1.55.0",
     "pngjs": "^7.0.0",

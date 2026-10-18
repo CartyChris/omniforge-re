@@ -11,6 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { CSP as csp } from "./csp.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "../../..");
@@ -35,7 +36,6 @@ for (const [route, [entry, maxDuration]] of Object.entries(FUNCTIONS)) {
   fs.writeFileSync(path.join(dir, ".vc-config.json"), JSON.stringify({ runtime: "nodejs22.x", handler: "index.mjs", launcherType: "Nodejs", supportsResponseStreaming: true, maxDuration, shouldAddHelpers: false, shouldAddSourcemapSupport: false }, null, 2));
 }
 
-const csp = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; worker-src 'self' blob:; frame-src 'self' blob: https://*.codesandbox.io; connect-src 'self' https: http://127.0.0.1:* http://localhost:*; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'";
 fs.writeFileSync(path.join(out, "config.json"), JSON.stringify({
   version: 3,
   routes: [

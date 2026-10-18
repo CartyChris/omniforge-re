@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { unzipSync, strFromU8 } from "fflate";
 import fs from "node:fs";
-import { noErrors, prepare } from "./helpers";
+import { noErrors, prepare, underProductionCsp } from "./helpers";
 
 test("analyse a website end to end: live job → evidence-linked results → exports", async ({ page }) => {
   const errors = await prepare(page);
@@ -89,5 +89,29 @@ test("compare two investigations: choose from the list, see the evidence-derived
   // the Dashboard lists real activity only once something was built/deployed — none yet, so no empty card
   await page.goto("/#/");
   await expect(page.getByTestId("recent-activity")).toHaveCount(0);
+  noErrors(errors);
+});
+
+test("uploaded Python/Java/Go source: HTTP routes are parsed with tree-sitter in the browser (under the production CSP), as recovered evidence", async ({ page }) => {
+  const errors = await prepare(page);
+  await underProductionCsp(page);
+  const { zipSync, strToU8 } = await import("fflate");
+  const zip = zipSync({
+    "shop/main.py": strToU8('from fastapi import FastAPI\napp = FastAPI()\n@app.get("/users/{id}")\ndef get_user(id: int):\n    return 1\n'),
+    "shop/Ctl.java": strToU8('@RestController\n@RequestMapping("/api")\nclass Ctl {\n  @GetMapping("/ping") String ping() { return ""; }\n}\n'),
+    "shop/srv.go": strToU8('package main\nfunc main() { r.GET("/health", h) }\n'),
+    "shop/README.md": strToU8("# shop"),
+  });
+  await page.goto("/#/analyze");
+  const grammars: string[] = []; page.on("request", (r) => { if (r.url().includes("/tree-sitter/")) grammars.push(r.url().split("/").pop()!); });
+  await page.locator("input[type=file]").first().setInputFiles({ name: "shop.zip", mimeType: "application/zip", buffer: Buffer.from(zip) });
+  await page.getByText("Open results").waitFor({ timeout: 90_000 });
+  await page.getByRole("button", { name: "Open results" }).click();
+  await page.getByRole("tab", { name: /^APIs/ }).click();
+  for (const p of ["/users/{id}", "/api/ping", "/health"]) await expect(page.getByText(p, { exact: true }).first()).toBeVisible();
+  // only the grammars for the languages present were fetched (not all eight)
+  expect([...new Set(grammars)].sort()).toEqual(["tree-sitter-go.wasm", "tree-sitter-java.wasm", "tree-sitter-python.wasm", "web-tree-sitter.wasm"]);
+  await page.getByRole("tab", { name: "Overview" }).click();
+  await expect(page.getByText("Code structure parsed (tree-sitter)")).toBeVisible();
   noErrors(errors);
 });

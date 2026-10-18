@@ -22,6 +22,7 @@ import { applyReaInstall, planReaInstall, ReaJobs, REA_OPS, reaStatus, reaSummar
 import { findChrome, PlaywrightRenderer } from "./render.js";
 import { verifyUrls } from "./verify.js";
 import type { Deobfuscator } from "@omniforge/core";
+import { nodeStructureExtractor } from "@omniforge/structure/node";
 
 export interface BridgeOptions { port?: number; uiToken?: string; version?: string; allowedOrigins?: string[]; jobsDir?: string; reaDir?: string }
 export interface Bridge { url: string; port: number; auth: BridgeAuth; roots: Roots; jobs: JobManager; close(): Promise<void> }
@@ -34,6 +35,7 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
   const rea = new ReaJobs(jobs, o.reaDir);
   let renderer: PlaywrightRenderer | null = null;
   const getRenderer = () => (renderer ??= new PlaywrightRenderer({ allowPrivate: true }));
+  const structure = nodeStructureExtractor(); // tree-sitter grammars are read from disk on first use
   // webcrack + the QuickJS sandbox are loaded only when a deobfuscation is first requested
   let deob: Deobfuscator | null = null;
   const getDeobfuscator = (): Deobfuscator => (deob ??= { deobfuscate: async (code, run) => (await import("../deobfuscate.js")).createDeobfuscator().deobfuscate(code, run) });
@@ -106,7 +108,7 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
     if (is("POST", "/bridge/analyze-folder")) {
       need(p, "fs:read"); const b = await readJson(req, 4000);
       const { files, skipped } = await snapshotFolder(roots, b.root, { sub: b.sub });
-      const inv = await investigateSource(root(b.root).label, files, { kind: "folder", origin: `local:${root(b.root).label}` });
+      const inv = await investigateSource(root(b.root).label, files, { kind: "folder", origin: `local:${root(b.root).label}`, structure });
       inv.limitations.push(...skipped.slice(0, 20).map((s) => `${s.path}: ${s.reason}`));
       return json(inv);
     }
@@ -114,7 +116,7 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
       need(p, "fs:read"); const b = await readJson(req, 4000);
       const abs = await roots.resolve(b.root, b.path ?? ".", { mustExist: true });
       const report = await inspectPath(abs);
-      const inv = report.files.length ? await investigateSource(report.name, report.files, { kind: "files", origin: abs }) : null;
+      const inv = report.files.length ? await investigateSource(report.name, report.files, { kind: "files", origin: abs, structure }) : null;
       return json({ report: { ...report, files: report.files.map((f) => f.path) }, investigation: inv });
     }
 
