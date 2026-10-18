@@ -30,6 +30,13 @@ export function createMockLlm({ model = "mock-scripted-coder" } = {}) {
         const next = wants.find((w) => !written.includes(w));
         const tools = j.tools ?? [];
         const call = (name, args, i = 0) => ({ index: i, id: `call_${calls.length}_${i}`, type: "function", function: { name, arguments: JSON.stringify(args) } });
+        if (!tools.length && /editing ONE file/.test(String(j.messages.find((m) => m.role === "system")?.content ?? ""))) {
+          // Scripted file edit (plumbing test for the workspace's propose → diff → accept flow): prepends a marker line; keywords force the two failure shapes.
+          const instr = (user.match(/Instruction from the user \(trusted\): (.*)/) ?? [])[1] ?? "";
+          const file = (user.match(/<<<UNTRUSTED_DATA[^\n]*>>>\n([\s\S]*?)\n<<<END_UNTRUSTED_DATA>>>/) ?? [])[1] ?? "";
+          const reply = /ABBREVIATE/.test(instr) ? "```js\n" + file.split("\n")[0] + "\n// ... rest of the file unchanged\n```\n" : /TRUNCATE/.test(instr) ? "```js\n" + file.slice(0, 12) : "```js\n// edited by scripted mock: " + instr + "\n" + file + "\n```\n";
+          return sse(res, [{ choices: [{ delta: { content: reply }, index: 0 }] }, { choices: [{ delta: {}, finish_reason: "stop", index: 0 }], usage: { prompt_tokens: 10, completion_tokens: 10 } }]);
+        }
         if (!tools.length) return sse(res, [{ choices: [{ delta: { content: "mock answer" }, index: 0 }] }, { choices: [{ delta: {}, finish_reason: "stop", index: 0 }], usage: { prompt_tokens: 10, completion_tokens: 2 } }]);
         const tc = next ? call("write_file", { path: next, content: content(next, user.split("OBJECTIVE\n")[1] ?? "") }) : call("finish", { summary: `Mock model finished; wrote ${written.length} file(s): ${written.join(", ") || "none"}.` });
         sse(res, [{ choices: [{ delta: { tool_calls: [tc] }, index: 0 }] }, { choices: [{ delta: {}, finish_reason: "tool_calls", index: 0 }], usage: { prompt_tokens: 50, completion_tokens: 20 } }]);

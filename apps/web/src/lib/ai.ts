@@ -1,5 +1,5 @@
 /** Builds live providers from saved configs + vaulted keys; discovers models; bridges CLIs. */
-import { allModels, collect, configFromPreset, createProvider, executeGraph, governed, memoryFS, UsageMeter, type AgentTask, type ChatEvent, type ChatRequest, type ModelInfo, type Provider, type ProviderConfig, type ProviderStatus, type RunContext, type WorkspaceFS, type CommandRunner, chooseModel, type TaskKind } from "@omniforge/core";
+import { allModels, buildEditPrompt, collect, parseEditReply, type EditProposal, type EditRejection, type EditRequest, configFromPreset, createProvider, executeGraph, governed, memoryFS, UsageMeter, type AgentTask, type ChatEvent, type ChatRequest, type ModelInfo, type Provider, type ProviderConfig, type ProviderStatus, type RunContext, type WorkspaceFS, type CommandRunner, chooseModel, type TaskKind } from "@omniforge/core";
 import { useApp } from "./store";
 import { vault, VaultLocked } from "./vault";
 import { smartFetch } from "./net";
@@ -75,13 +75,26 @@ export function pickModel(task: TaskKind): { model: ModelInfo; reasons: string[]
 }
 
 /** Run a one-shot prompt against whatever model suits the task. */
-export async function ask(task: TaskKind, prompt: string, o: { system?: string; json?: boolean; signal?: AbortSignal; onText?: (t: string) => void } = {}) {
+export async function ask(task: TaskKind, prompt: string, o: { system?: string; json?: boolean; signal?: AbortSignal; onText?: (t: string) => void; maxTokens?: number } = {}) {
   const pick = pickModel(task); if (!pick) throw new Error("No model is available. Connect a provider in AI Studio (or install a local model).");
   const { providers } = await loadProviders();
   const prov = providers.find((p) => p.id === pick.model.provider); if (!prov) throw new Error(`Provider ${pick.model.provider} is not available.`);
   let text = "";
-  const r = await collect((async function* () { for await (const e of prov.chat({ model: pick.model.id, system: o.system, messages: [{ role: "user", content: prompt }], signal: o.signal, json: o.json, maxTokens: 4096 })) { if (e.type === "text") o.onText?.((text += e.text)); yield e; } })());
+  const r = await collect((async function* () { for await (const e of prov.chat({ model: pick.model.id, system: o.system, messages: [{ role: "user", content: prompt }], signal: o.signal, json: o.json, maxTokens: o.maxTokens ?? 4096 })) { if (e.type === "text") o.onText?.((text += e.text)); yield e; } })());
   return { text: r.text, model: pick.model, usage: r.usage };
+}
+
+/**
+ * Ask the code model for a replacement of ONE file. Returns a proposal (never writes anything) or the reason it cannot be trusted.
+ * The output budget scales with the file so a long file is not silently cut off — and a cut-off reply is rejected by parseEditReply.
+ */
+export async function proposeEdit(req: EditRequest, o: { signal?: AbortSignal; onText?: (t: string) => void } = {}): Promise<(EditProposal & { model: ModelInfo }) | EditRejection> {
+  const { system, prompt } = buildEditPrompt(req);
+  const pick = pickModel("code"); if (!pick) throw new Error("No model is available. Connect a provider in AI Studio (or start a local model).");
+  const want = Math.ceil(req.content.length / 2.8) + 1500;
+  const r = await ask("code", prompt, { system, signal: o.signal, onText: o.onText, maxTokens: Math.max(4096, Math.min(want, pick.model.maxOutput ?? 16_000, 32_000)) });
+  const parsed = parseEditReply(r.text, req.content);
+  return parsed.ok ? { ...parsed, model: r.model } : parsed;
 }
 
 /* ---------------- workspace FS + runner for agents ---------------- */

@@ -4,6 +4,7 @@ import { vault } from "./vault";
 import { smartFetch } from "./net";
 import { useApp } from "./store";
 import { requestApproval } from "./approvals";
+import { audit } from "./audit";
 
 export const GH_KEY = "token:github";
 export const VC_KEY = "token:vercel";
@@ -24,6 +25,16 @@ export async function publishToGitHub(name: string, files: { path: string; data:
   if (!full) { const r = await github.createRepo(gh, name, { private: o.private !== false, description: o.description }); full = r.full_name; }
   const c = await github.commitFiles(gh, full!, files, { message: o.message ?? "Initial commit from OmniForge RE" });
   return { repo: full!, url: `https://github.com/${full}`, commit: c };
+}
+
+/** Branch + commit + pull request on an existing repository. The base branch is never written to; adds/updates files only (nothing is deleted). */
+export async function publishPullRequest(repo: string, files: { path: string; data: Uint8Array | string }[], o: { base: string; branch: string; title: string; body?: string }) {
+  const gh = await ghOpts();
+  const ok = await requestApproval({ kind: "publish", title: `Open a pull request on ${repo}?`, detail: `${files.length} files will be committed to a NEW branch “${o.branch}” (based on “${o.base}”) and a pull request titled “${o.title}” will be opened. “${o.base}” itself is not modified and no file is deleted. Secrets are never included, but review licensing first.` });
+  if (!ok) throw new Error("Pull request cancelled.");
+  const r = await github.openPullRequest(gh, repo, { files, branch: o.branch, base: o.base, title: o.title, body: o.body });
+  void audit("pull request opened", `${repo}#${r.number} from ${o.branch}`);
+  return r;
 }
 
 export const taskDone = (t: AgentTask[]) => t.every((x) => ["done", "skipped"].includes(x.status));

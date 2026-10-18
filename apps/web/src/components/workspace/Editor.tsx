@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Editor, { DiffEditor } from "@monaco-editor/react";
 import { langOf } from "@/lib/monaco";
 import { useApp } from "@/lib/store";
@@ -18,6 +18,10 @@ export function CodeEditor({ path, value, onChange, readOnly, onMarkers }: { pat
 export function DiffView({ path, original, modified, onChange }: { path: string; original: string; modified: string; onChange?: (v: string) => void }) {
   const theme = useApp((s) => s.settings.theme);
   const [inline, setInline] = useState(false);
+  const widget = useRef<{ setModel(m: null): void } | null>(null);
+  // @monaco-editor/react disposes the models before the widget lets go of them ("TextModel got disposed before DiffEditorWidget model got reset");
+  // detaching the models first (our cleanup runs before the wrapper's) avoids the uncaught error when the diff is closed.
+  useEffect(() => () => { try { widget.current?.setModel(null); } catch { /* already disposed */ } widget.current = null; }, []);
   useEffect(() => { const f = () => setInline(window.innerWidth < 900); f(); window.addEventListener("resize", f); return () => window.removeEventListener("resize", f); }, []);
-  return <DiffEditor key={path} original={original} modified={modified} language={langOf(path)} theme={theme === "dark" ? "vs-dark" : "light"} loading={<div className="grid h-full place-items-center"><Spinner /></div>} options={{ ...opts, renderSideBySide: !inline, originalEditable: false }} onMount={(ed) => { ed.getModifiedEditor().onDidChangeModelContent(() => onChange?.(ed.getModifiedEditor().getValue())); }} />;
+  return <DiffEditor key={path} original={original} modified={modified} language={langOf(path)} theme={theme === "dark" ? "vs-dark" : "light"} loading={<div className="grid h-full place-items-center"><Spinner /></div>} options={{ ...opts, renderSideBySide: !inline, originalEditable: false }} onMount={(ed) => { widget.current = ed; ed.getModifiedEditor().onDidChangeModelContent(() => onChange?.(ed.getModifiedEditor().getValue())); }} />;
 }

@@ -4,7 +4,7 @@ import { expect, type Page } from "@playwright/test";
 export async function prepare(page: Page, extra: Record<string, unknown> = {}) {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
-  page.on("console", (m) => { if (m.type() === "error") errors.push(`console: ${m.text().slice(0, 250)}`); });
+  page.on("console", (m) => { if (m.type() === "error") { const l = m.location(); errors.push(`console: ${m.text().slice(0, 250)}${l?.url ? ` @ ${l.url}:${l.lineNumber}` : ""}`); } });
   await page.addInitScript((s) => { try { localStorage.setItem("omniforge.settings", JSON.stringify({ onboarded: true, ...s })); localStorage.setItem("omniforge.ack", "1"); } catch { /* sandboxed iframes have no storage */ } }, extra);
   return errors;
 }

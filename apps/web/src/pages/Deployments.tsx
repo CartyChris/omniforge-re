@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { CheckCircle2, CircleAlert, ExternalLink, Github, Loader2, Rocket, ShieldCheck, Triangle, XCircle, Download, RefreshCw, Plus, Trash2 } from "lucide-react";
-import { uid, vercel, zipPackage } from "@omniforge/core";
+import { github, uid, vercel, zipPackage } from "@omniforge/core";
 import { useApp } from "@/lib/store";
-import { VC_KEY, publishToGitHub, vcOpts } from "@/lib/github";
+import { VC_KEY, ghOpts, publishPullRequest, publishToGitHub, vcOpts } from "@/lib/github";
 import { vault } from "@/lib/vault";
 import { blocked, detectFramework, preflight, probeUrl, type Check, type ProbeResult } from "@/lib/deploy";
 import { requestApproval } from "@/lib/approvals";
 import { ago, cn, download } from "@/lib/utils";
-import { Badge, Button, Card, CardBody, CardHeader, CardTitle, EmptyState, Field, Input, SectionTitle, Segmented } from "@/components/ui/primitives";
+import { Badge, Button, Card, CardBody, CardHeader, CardTitle, EmptyState, Field, Input, SectionTitle, Segmented, Textarea } from "@/components/ui/primitives";
+import { Select } from "@/components/ui/overlay";
 import { useNavigate } from "react-router";
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 52) || "app";
@@ -91,24 +92,55 @@ function VercelPanel({ files, fw, blocked: stop, hasToken, name, record, teamId 
 
 function GitHubPanel({ files, blocked: stop, name, record }: { files: Record<string, string>; blocked: boolean; name: string; record: (d: any) => void }) {
   const { settings } = useApp(); const nav = useNavigate();
+  const [mode, setMode] = useState<"repo" | "pr">("repo");
   const [n, setN] = useState(name); const [priv, setPriv] = useState(true); const [busy, setBusy] = useState(false); const [url, setUrl] = useState<string | null>(null);
   useEffect(() => setN(name), [name]);
   const connected = !!settings.github.login;
+  const list = () => Object.entries(files).map(([path, data]) => ({ path, data }));
   const push = async () => {
     setBusy(true);
-    try { const r = await publishToGitHub(n, Object.entries(files).map(([path, data]) => ({ path, data })), { private: priv, description: "Created with OmniForge RE" }); setUrl(r.url); record({ provider: "github", url: r.url, status: `pushed ${Object.keys(files).length} files (commit ${String(r.commit?.sha ?? "").slice(0, 7)})` }); toast.success("Pushed to GitHub"); }
+    try { const r = await publishToGitHub(n, list(), { private: priv, description: "Created with OmniForge RE" }); setUrl(r.url); record({ provider: "github", url: r.url, status: `pushed ${Object.keys(files).length} files (commit ${String(r.commit?.sha ?? "").slice(0, 7)})` }); toast.success("Pushed to GitHub"); }
     catch (e) { toast.error((e as Error).message); record({ provider: "github", status: "failed", detail: (e as Error).message }); } finally { setBusy(false); }
   };
   return (
     <Card><CardHeader><CardTitle className="flex items-center gap-2"><Github className="size-4" />GitHub</CardTitle>{connected ? <Badge tone="ok" dot>{settings.github.login}</Badge> : <Badge>not connected</Badge>}</CardHeader>
       <CardBody className="space-y-4">
-        {!connected ? <div className="space-y-3 text-[13px] text-muted"><p>Connect GitHub to create a repository and push the project as a single commit.</p><Button variant="secondary" onClick={() => nav("/integrations")}>Connect GitHub</Button></div> : <>
-          <Field label="New repository name"><Input value={n} onChange={(e) => setN(slug(e.target.value))} /></Field>
-          <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={priv} onChange={(e) => setPriv(e.target.checked)} />Private repository</label>
-          <Button variant="primary" icon={busy ? <Loader2 className="size-4 animate-spin" /> : <Github className="size-4" />} disabled={stop || busy || !n} onClick={push}>Create repo & push</Button>
+        {!connected ? <div className="space-y-3 text-[13px] text-muted"><p>Connect GitHub to create a repository and push the project as a single commit, or open a pull request on a repository you already have.</p><Button variant="secondary" onClick={() => nav("/integrations")}>Connect GitHub</Button></div> : <>
+          <Segmented size="sm" value={mode} onChange={setMode} options={[{ value: "repo", label: "New repository" }, { value: "pr", label: "Pull request" }]} />
+          {mode === "repo" ? <>
+            <Field label="New repository name"><Input value={n} onChange={(e) => setN(slug(e.target.value))} /></Field>
+            <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={priv} onChange={(e) => setPriv(e.target.checked)} />Private repository</label>
+            <Button variant="primary" icon={busy ? <Loader2 className="size-4 animate-spin" /> : <Github className="size-4" />} disabled={stop || busy || !n} onClick={push}>Create repo & push</Button>
+          </> : <PullRequestForm files={list} blocked={stop} name={name} record={record} setUrl={setUrl} />}
           {url && <a href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-[13px] text-accent hover:underline">{url}<ExternalLink className="size-3" /></a>}
         </>}
       </CardBody></Card>
+  );
+}
+
+function PullRequestForm({ files, blocked: stop, name, record, setUrl }: { files: () => { path: string; data: string }[]; blocked: boolean; name: string; record: (d: any) => void; setUrl: (u: string) => void }) {
+  type Repo = { full_name: string; private: boolean; default_branch: string };
+  const [repos, setRepos] = useState<Repo[] | null>(null); const [loading, setLoading] = useState(false); const [repo, setRepo] = useState(""); const [base, setBase] = useState("main");
+  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const [branch, setBranch] = useState(`omniforge/${name}-${stamp}`); const [title, setTitle] = useState(`Changes from OmniForge RE`); const [body, setBody] = useState(""); const [busy, setBusy] = useState(false);
+  useEffect(() => setBranch(`omniforge/${name}-${stamp}`), [name, stamp]);
+  const load = async () => { setLoading(true); try { const r = await github.listRepos(await ghOpts(), 100); setRepos(r); if (r[0] && !repo) { setRepo(r[0].full_name); setBase(r[0].default_branch); } } catch (e) { toast.error((e as Error).message); } finally { setLoading(false); } };
+  const bad = github.branchNameProblem(branch); const okRepo = /^[\w.-]+\/[\w.-]+$/.test(repo);
+  const open = async () => {
+    setBusy(true);
+    try { const r = await publishPullRequest(repo, files(), { base, branch, title, body: body || undefined }); setUrl(r.url); record({ provider: "github", url: r.url, status: `pull request #${r.number} opened on ${repo} (${files().length} files, commit ${r.commit.sha.slice(0, 7)})` }); toast.success(`Pull request #${r.number} opened`, { action: { label: "Open", onClick: () => window.open(r.url, "_blank", "noopener") } }); }
+    catch (e) { toast.error((e as Error).message); if (!/cancelled/i.test((e as Error).message)) record({ provider: "github", status: "pull request failed", detail: (e as Error).message }); } finally { setBusy(false); }
+  };
+  return (
+    <div className="space-y-3">
+      {repos === null ? <div className="space-y-2"><Field label="Repository (owner/name)"><Input value={repo} onChange={(e) => setRepo(e.target.value.trim())} placeholder="octocat/hello-world" spellCheck={false} /></Field><Button size="xs" variant="ghost" loading={loading} onClick={load}>Pick from my repositories</Button></div>
+        : <Field label="Repository" group><Select label="Repository" value={repo} onValueChange={(v) => { setRepo(v); const r = repos.find((x) => x.full_name === v); if (r) setBase(r.default_branch); }} options={repos.map((r) => ({ value: r.full_name, label: r.full_name, hint: r.private ? "private" : "public" }))} /></Field>}
+      <div className="grid grid-cols-2 gap-3"><Field label="Base branch"><Input value={base} onChange={(e) => setBase(e.target.value.trim())} spellCheck={false} /></Field><Field label="New branch" hint={bad ?? undefined}><Input value={branch} onChange={(e) => setBranch(e.target.value.trim())} spellCheck={false} aria-invalid={!!bad} /></Field></div>
+      <Field label="Title"><Input value={title} onChange={(e) => setTitle(e.target.value)} /></Field>
+      <Field label="Description (optional)"><Textarea rows={3} value={body} onChange={(e) => setBody(e.target.value)} /></Field>
+      <p className="text-xs text-muted">Commits {files().length} file{files().length === 1 ? "" : "s"} to the new branch and opens the pull request. “{base || "base"}” is never modified, and no files are deleted.</p>
+      <Button variant="primary" icon={busy ? <Loader2 className="size-4 animate-spin" /> : <Github className="size-4" />} disabled={stop || busy || !okRepo || !!bad || !base || !title.trim() || files().length === 0} onClick={open}>Open pull request</Button>
+    </div>
   );
 }
 

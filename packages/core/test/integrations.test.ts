@@ -83,6 +83,28 @@ describe("GitHub", () => {
     expect(await gh.createBranch(G(), "octo/r", "feature", "main")).toEqual({ branch: "feature", sha: "headsha" });
     expect(await gh.createPullRequest(G(), "octo/r", { title: "t", head: "feature", base: "main" })).toEqual({ number: 7, url: "https://github.com/octo/r/pull/7" });
   });
+  it("validates branch names", () => {
+    for (const ok of ["feature", "omniforge/ai-edit-1", "fix_2.0"]) expect(gh.branchNameProblem(ok)).toBeNull();
+    for (const bad of ["", "has space", "a..b", "-x", "x/", "x.lock", "a//b", "a@{b", "a:b", "a^b", "/abs", ".hidden/x"]) expect(gh.branchNameProblem(bad), bad).not.toBeNull();
+  });
+  it("opens a pull request: branch from the base head, one commit, PR head=branch — never writes to the base", async () => {
+    mode = "existing"; calls.length = 0;
+    const pr = await gh.openPullRequest(G(), "octo/r", { files: [{ path: "a.txt", data: "x" }], branch: "omniforge/change", base: "main", title: "Add a.txt", body: "details" });
+    expect(pr).toMatchObject({ number: 7, url: "https://github.com/octo/r/pull/7", commit: { sha: "newcommit", branch: "omniforge/change" } });
+    expect(calls.find((c) => c.url.endsWith("/git/commits") && c.method === "POST")!.body).toMatchObject({ parents: ["headsha"], message: "Add a.txt" });
+    expect(calls.filter((c) => c.method === "POST" && c.url.endsWith("/git/refs")).map((c) => c.body.ref)).toEqual(["refs/heads/omniforge/change"]);
+    expect(calls.some((c) => c.method === "PATCH")).toBe(false); // base branch ref untouched
+    expect(calls.at(-1)).toMatchObject({ method: "POST", url: "/repos/octo/r/pulls", body: { title: "Add a.txt", head: "omniforge/change", base: "main", body: "details" } });
+  });
+  it("refuses to open a pull request from the base branch itself, from a bad name, or against a base that does not exist", async () => {
+    mode = "existing"; calls.length = 0;
+    const f = [{ path: "a", data: "x" }];
+    await expect(gh.openPullRequest(G(), "octo/r", { files: f, branch: "main", base: "main", title: "t" })).rejects.toThrow(/must differ/);
+    await expect(gh.openPullRequest(G(), "octo/r", { files: f, branch: "bad name", base: "main", title: "t" })).rejects.toThrow(/branch name/i);
+    await expect(gh.openPullRequest(G(), "octo/r", { files: f, branch: "x", base: "nope", title: "t" })).rejects.toThrow(/base branch “nope” does not exist/);
+    await expect(gh.openPullRequest(G(), "octo/r", { files: [], branch: "x", base: "main", title: "t" })).rejects.toThrow(/no files/);
+    expect(calls.filter((c) => c.method !== "GET")).toEqual([]); // nothing was written by any refused attempt
+  });
   it("gives actionable errors", async () => {
     await expect(gh.whoami(G("bad"))).rejects.toThrow(/401.*token invalid or expired/);
     await expect(gh.createRepo(G(), "taken")).rejects.toThrow(/already exists/);

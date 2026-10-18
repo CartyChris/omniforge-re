@@ -28,6 +28,7 @@ export * from "./ai/providers/openai.js";
 export * from "./ai/providers/anthropic.js";
 export * from "./ai/providers/ollama.js";
 export * from "./ai/untrusted.js";
+export * from "./ai/codeedit.js";
 export * from "./ai/agents.js";
 export * from "./ai/plans.js";
 export * from "./repo/ref.js";

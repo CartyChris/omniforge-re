@@ -48,7 +48,27 @@ jobs:
         run: pnpm --filter @omniforge/desktop sidecar -- --target ${{ matrix.target }}
 
       - name: Build the app (.app + .dmg)
-        run: pnpm --filter @omniforge/desktop exec tauri build --target ${{ matrix.target }} --bundles app,dmg
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm --filter @omniforge/desktop exec tauri build --target ${{ matrix.target }} --bundles app,dmg 2>&1 | tee build.log
+
+      - name: Surface the build errors as annotations (readable without log access)
+        if: failure()
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import re, os
+          def esc(s): return s.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+          try: t = open('build.log', errors='replace').read()
+          except FileNotFoundError: t = ''
+          t = re.sub(r'\x1b\[[0-9;]*m', '', t)
+          lines = t.splitlines()
+          hits = [l for l in lines if re.search(r'error(\[|:)|panicked|failed|Error:|cannot find|unresolved|No such file|not found', l, re.I)]
+          if hits: print('::error title=build errors (matching lines)::' + esc('\n'.join(hits[:40])[:3500]))
+          tail = '\n'.join(lines[-70:])
+          for i in range(0, min(len(tail), 9000), 3000): print('::error title=build log tail %d::%s' % (i // 3000 + 1, esc(tail[i:i + 3000])))
+          PY
 
       - name: Verify the bundle
         shell: bash

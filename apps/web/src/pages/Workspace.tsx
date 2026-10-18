@@ -1,21 +1,23 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
-import { Archive, CheckCircle2, CircleAlert, CodeXml, Download, FolderGit2, GitBranch, Loader2, MonitorPlay, Rocket, SquareTerminal, X } from "lucide-react";
+import { Archive, Check, CheckCircle2, CircleAlert, CodeXml, Download, FolderGit2, GitBranch, Loader2, MonitorPlay, Rocket, Sparkles, SquareTerminal, TriangleAlert, X } from "lucide-react";
 import { zipPackage } from "@omniforge/core";
 import { useApp } from "@/lib/store";
 import { listRoots, type RootInfo } from "@/lib/local";
 import { useWorkspace, type Source } from "@/lib/workspace";
+import { audit } from "@/lib/audit";
 import { cn, download } from "@/lib/utils";
 import { Badge, Button, EmptyState, Segmented, Spinner } from "@/components/ui/primitives";
 import { Select } from "@/components/ui/overlay";
 import { FileTree } from "@/components/workspace/FileTree";
+import { AIPanel, type Proposal } from "@/components/workspace/AIPanel";
 import { GitPanel, HistoryPanel, PreviewPanel, ProblemsPanel, TerminalPanel, TestsBar, useRunner, type Marker } from "@/components/workspace/Panels";
 
 const LazyEditor = lazy(async () => { await import("@/lib/monaco"); const m = await import("@/components/workspace/Editor"); return { default: m.CodeEditor }; });
 const LazyDiff = lazy(async () => { await import("@/lib/monaco"); const m = await import("@/components/workspace/Editor"); return { default: m.DiffView }; });
 
-type PanelId = "preview" | "terminal" | "git" | "problems" | "history";
+type PanelId = "preview" | "terminal" | "git" | "problems" | "history" | "ai";
 
 export default function Workspace() {
   const { project, bridge, bridgeState } = useApp(); const nav = useNavigate();
@@ -26,9 +28,11 @@ export default function Workspace() {
   const [open, setOpen] = useState<string[]>(() => project?.workspace.open ?? []); const [active, setActive] = useState<string | undefined>(project?.workspace.active);
   const [panel, setPanel] = useState<PanelId>("preview"); const [mobile, setMobile] = useState<"files" | "editor" | "panel">("editor");
   const [markers, setMarkers] = useState<Marker[]>([]); const [compare, setCompare] = useState<string | null>(null); const [devUrl, setDevUrl] = useState<string>();
+  const [proposal, setProposal] = useState<Proposal | null>(null); const [aiFocus, setAiFocus] = useState(0);
   const runner = useRunner(ws.rootId, setDevUrl);
   const editorRef = useRef<HTMLDivElement>(null);
   // switching source resets tabs
+  useEffect(() => { setProposal(null); }, [src.kind, src.kind === "local" ? src.rootId : ""]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (src.kind === "local") { setOpen([]); setActive(undefined); setDevUrl(undefined); } else { setOpen(project?.workspace.open ?? []); setActive(project?.workspace.active); } }, [src.kind, src.kind === "local" ? src.rootId : ""]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (src.kind === "browser") useApp.getState().mutate((p) => (p.workspace.active === active && JSON.stringify(p.workspace.open) === JSON.stringify(open) ? p : { ...p, workspace: { ...p.workspace, open, active } })); }, [open, active]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -41,9 +45,18 @@ export default function Workspace() {
   // keyboard: Ctrl/Cmd-W closes the tab
   useEffect(() => { const k = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "w" && active && document.activeElement?.closest("[data-editor]")) { e.preventDefault(); closeFile(active); } }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [active, closeFile]);
 
+  useEffect(() => { const k = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "i" && !e.shiftKey && !e.altKey) { e.preventDefault(); setPanel("ai"); setMobile("panel"); setAiFocus((n) => n + 1); } }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, []);
+  const accept = () => {
+    if (!proposal) return;
+    if (ws.get(proposal.path) !== proposal.original) { toast.error("The file changed while the proposal was open. Reject it and ask again."); return; }
+    ws.set(proposal.path, proposal.content); void audit("ai edit applied", `${proposal.path} (+${proposal.added} −${proposal.removed}) via ${proposal.model}`);
+    toast.success(`Applied to ${proposal.path.split("/").pop()}`, { action: { label: "Undo", onClick: () => { ws.set(proposal.path, proposal.original); void audit("ai edit undone", proposal.path); } } }); setProposal(null);
+  };
+  const reject = () => { if (proposal) void audit("ai edit rejected", proposal.path); setProposal(null); };
   const isEmpty = ws.paths.length === 0 && !ws.loading;
   const panels: { id: PanelId; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: "preview", label: "Preview", icon: <MonitorPlay className="size-3.5" /> },
+    { id: "ai", label: "AI", icon: <Sparkles className="size-3.5" />, badge: proposal ? 1 : undefined },
     { id: "terminal", label: "Terminal", icon: <SquareTerminal className="size-3.5" />, badge: runner.runs.filter((r) => r.state === "running").length || undefined },
     { id: "git", label: "Git", icon: <GitBranch className="size-3.5" /> },
     { id: "problems", label: "Problems", icon: <CircleAlert className="size-3.5" />, badge: markers.filter((m) => m.severity === "error").length || undefined },
@@ -76,9 +89,17 @@ export default function Workspace() {
             {active && snap && <Badge tone="accent" className="ml-2">diff vs “{snap.label}”</Badge>}
             {active && errs > 0 && <Badge tone="bad" className="ml-2">{errs} error{errs > 1 ? "s" : ""}</Badge>}
           </div>
+          {proposal && proposal.path === active && (
+            <div role="region" aria-label="AI proposal" className="space-y-1.5 border-b border-accent/30 bg-accent-soft px-3 py-2 text-xs">
+              <div className="flex flex-wrap items-center gap-2"><Sparkles className="size-3.5 text-accent" /><span className="font-medium text-fg">AI proposes changes to {proposal.path.split("/").pop()}</span><Badge tone="ok">+{proposal.added}</Badge><Badge tone="bad">−{proposal.removed}</Badge><span className="text-muted">{proposal.model}{proposal.local ? " · local" : ""}</span>
+                <div className="ml-auto flex gap-1.5"><Button size="xs" variant="ghost" onClick={reject}>Reject</Button><Button size="xs" variant="primary" icon={<Check className="size-3.5" />} onClick={accept}>Accept changes</Button></div></div>
+              {proposal.warnings.map((w) => <p key={w} className="flex items-start gap-1.5 text-warn"><TriangleAlert className="mt-0.5 size-3.5 shrink-0" />{w}</p>)}
+              <p className="truncate text-faint">“{proposal.instruction}” — you can still edit the right-hand side before accepting.</p>
+            </div>
+          )}
           <div ref={editorRef} className="min-h-0 flex-1 bg-bg">
             {ws.loading ? <div className="grid h-full place-items-center"><div className="flex items-center gap-2 text-sm text-muted"><Spinner />Reading folder…</div></div>
-              : active && current !== undefined ? <Suspense fallback={<div className="grid h-full place-items-center"><Spinner /></div>}>{snap && snap.files[active] !== undefined ? <LazyDiff path={active} original={snap.files[active]!} modified={current} onChange={(v) => ws.set(active, v)} /> : <LazyEditor path={active} value={current} readOnly={ws.readonly.has(active)} onChange={(v) => ws.set(active, v)} onMarkers={(m) => setMarkers((all) => [...all.filter((x) => x.path !== active), ...m])} />}</Suspense>
+              : active && current !== undefined ? <Suspense fallback={<div className="grid h-full place-items-center"><Spinner /></div>}>{proposal && proposal.path === active ? <LazyDiff path={`proposal:${active}`} original={proposal.original} modified={proposal.content} onChange={(v) => setProposal((p) => (p ? { ...p, content: v } : p))} /> : snap && snap.files[active] !== undefined ? <LazyDiff path={active} original={snap.files[active]!} modified={current} onChange={(v) => ws.set(active, v)} /> : <LazyEditor path={active} value={current} readOnly={ws.readonly.has(active)} onChange={(v) => ws.set(active, v)} onMarkers={(m) => setMarkers((all) => [...all.filter((x) => x.path !== active), ...m])} />}</Suspense>
               : isEmpty ? <EmptyState icon={<FolderGit2 className="size-5" />} title="This workspace is empty" body="Create a file, upload some, rip a GitHub repo, or have AI Studio build an app — the files land here." action={<div className="flex gap-2"><Button variant="primary" onClick={() => nav("/studio")}>Build with AI</Button><Button variant="secondary" onClick={() => nav("/repo-rip")}>Rip a repo</Button></div>} />
               : <EmptyState icon={<CodeXml className="size-5" />} title="Pick a file" body="Choose one from the tree. Edits save automatically." />}
           </div>
@@ -88,6 +109,7 @@ export default function Workspace() {
           <div className="flex items-center overflow-x-auto border-b border-line [scrollbar-width:none]" role="tablist" aria-label="Panels">{panels.map((p) => <button key={p.id} role="tab" aria-selected={panel === p.id} onClick={() => setPanel(p.id)} className={cn("flex h-9 shrink-0 items-center gap-1.5 border-b-2 px-3 text-[13px] font-medium transition", panel === p.id ? "border-accent text-fg" : "border-transparent text-muted hover:text-fg")}>{p.icon}{p.label}{p.badge ? <Badge tone={p.id === "problems" ? "bad" : "info"}>{p.badge}</Badge> : null}</button>)}</div>
           <div className="min-h-0 flex-1 overflow-auto">
             {panel === "preview" && <PreviewPanel ws={ws} devUrl={devUrl} />}
+            {panel === "ai" && <AIPanel path={active} content={current} markers={markers} onPropose={(p) => { setProposal(p); setCompare(null); setMobile("editor"); }} pending={!!proposal} focusSignal={aiFocus} />}
             {panel === "terminal" && <div className="flex h-full flex-col">{ws.rootId && <TestsBar ws={ws} runner={runner} />}<div className="min-h-0 flex-1"><TerminalPanel runner={runner} disabled={ws.rootId ? undefined : "Switch the workspace to a folder on your Mac to run installs, builds and tests. Commands only run in folders you approved."} /></div></div>}
             {panel === "git" && <GitPanel rootId={ws.rootId} />}
             {panel === "problems" && <ProblemsPanel markers={markers.filter((m) => open.includes(m.path))} onJump={(m) => openFile(m.path)} />}
