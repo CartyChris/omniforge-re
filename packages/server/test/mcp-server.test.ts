@@ -65,7 +65,7 @@ describe("investigations, sections and rebuild briefs (real crawl of the fixture
   }, 90_000);
   it("lists what was analysed and reads each section", async () => {
     expect(body(await call(s, "list_investigations"))).toContain(id);
-    for (const sec of ["overview", "pages", "features", "endpoints", "technologies", "findings", "dependencies", "design", "limitations"]) { const r = await call(s, "get_investigation", { id, section: sec }); expect(r.isError, sec).toBeUndefined(); expect(body(r), sec).toContain("<<<"); }
+    for (const sec of ["overview", "pages", "content", "features", "endpoints", "technologies", "findings", "dependencies", "design", "limitations"]) { const r = await call(s, "get_investigation", { id, section: sec }); expect(r.isError, sec).toBeUndefined(); expect(body(r), sec).toContain("<<<"); }
     expect(body(await call(s, "get_investigation", { id, section: "pages" }))).toContain("/products/widget");
     expect(body(await call(s, "get_investigation", { id }))).toMatch(/Target:/); // default section is the overview
   });

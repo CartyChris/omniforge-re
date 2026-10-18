@@ -169,6 +169,19 @@ describe("SSRF at the pipeline boundary", () => {
   });
 });
 
+describe("page text (Markdown) captured during a crawl", () => {
+  it("keeps each page's real copy, links and form fields, and never stores a secret that appeared in the copy", async () => {
+    const inv = await investigate({ targets: [base + "/"], allowPrivate: true, config: { delayMs: 0, concurrency: 4, maxPages: 20 } });
+    const home = inv.pages.find((p) => p.url === base + "/")!;
+    expect(home.text).toContain("# Home"); expect(home.text).toContain("Welcome"); expect(home.text).toContain("[Products](/products)"); expect(home.text).toContain("[input search: Search products]");
+    const login = inv.pages.find((p) => p.url.endsWith("/login"))!; expect(login.text).toMatch(/\[input email/);
+    const privacy = inv.pages.find((p) => p.url.endsWith("/privacy"))!;
+    expect(privacy.text).toContain("Debug token left in the copy by mistake"); expect(privacy.text).toContain("[REDACTED:"); expect(privacy.text).not.toMatch(/ghp_x{36}/);
+    expect(JSON.stringify(inv)).not.toMatch(/ghp_x{36}/); // nowhere in the stored investigation
+    expect(inv.pages.every((p) => !p.text || p.text.length <= 6100)).toBe(true);
+  }, 60_000);
+});
+
 describe("library version detection during a crawl (retire.js rules supplied by the host)", () => {
   const { repo } = parseRepository(JSON.parse(fs.readFileSync(new URL("./fixtures/retire/jsrepository-excerpt.json", import.meta.url), "utf8")));
   it("identifies the real jQuery 1.12.4 file, records evidence, a dependency, a technology and a security finding that cites it", async () => {

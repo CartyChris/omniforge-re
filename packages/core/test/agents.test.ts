@@ -204,6 +204,8 @@ describe("plans from a real investigation", () => {
     expect(b.startsWith("<<<UNTRUSTED_DATA")).toBe(true);
     expect(b).toMatch(/Authentication/);
     expect(b).toMatch(/\/products\/gadget/);
+    expect(b).toMatch(/PAGE TEXT/); expect(b).toMatch(/--- \/\n/); expect(b).toContain("[Products](/products)"); // the real copy and navigation reach the rebuild brief
+    expect(b.indexOf("PAGE TEXT")).toBeGreaterThan(b.indexOf("FEATURES")); expect(b.indexOf("PAGE TEXT")).toBeLessThan(b.lastIndexOf("<<<END_"));
     const fb = featureBrief(inv, inv.features.find((f) => f.name === "Authentication")!);
     expect(fb).toMatch(/SPEC:/);
     expect(fb).toMatch(/RECOVERED SOURCE: none/);

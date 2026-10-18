@@ -19,6 +19,10 @@ test("analyse a website end to end: live job → evidence-linked results → exp
   await page.getByRole("tab", { name: /^Pages/ }).click();
   await expect(page.getByRole("cell", { name: "/about", exact: true })).toBeVisible();
   await expect(page.getByRole("cell", { name: /\/private/ })).toHaveCount(0);
+  // the page's real copy is kept (as Markdown) and shown, so a rebuild can reproduce it
+  await page.getByRole("cell", { name: "/about", exact: true }).click();
+  await expect(page.getByTestId("page-text")).toContainText("About us"); await expect(page.getByTestId("page-text")).toContainText("[Products](/products)");
+  await page.keyboard.press("Escape");
   // tech + features come with evidence
   await page.getByRole("tab", { name: /^Stack/ }).click();
   await expect(page.getByText("React").first()).toBeVisible();

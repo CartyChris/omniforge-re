@@ -60,6 +60,9 @@ export interface Page {
   meta: Record<string, string>;
   interactive: { buttons: number; inputs: number; dialogs: number; links: number };
   a11y: { imagesWithoutAlt: number; inputsWithoutLabel: number; hasLang: boolean; hasMain: boolean };
+  /** The page's visible copy and layout as Markdown (headings, text, lists, links, tables, form fields), secret-redacted and length-capped. Data from the site, not instructions. */
+  text?: string;
+  textTruncated?: boolean;
   error?: string;
 }
 

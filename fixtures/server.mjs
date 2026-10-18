@@ -21,7 +21,7 @@ export const PAGES = {
   "/contact": page("Contact", `<form action="/api/contact" method="post"><input name="name" placeholder="Name"><textarea name="msg" aria-label="Message"></textarea><input type="file" name="attachment" aria-label="File"><button>Send</button></form>`),
   // Not linked from anywhere: only reached when a test targets it. Loads real, unmodified library files so version detection is tested on genuine bytes.
   "/legacy": `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Legacy</title></head><body><h1>Legacy</h1><script src="/static/vendor/jquery-1.12.4.min.js"></script><script src="/static/vendor/site-bundle.js"></script></body></html>`,
-  "/privacy": page("Privacy", `<p>Privacy</p>`),
+  "/privacy": page("Privacy", `<p>Privacy</p><p>Debug token left in the copy by mistake: ${["ghp", "x".repeat(36)].join("_")}</p>`),
   "/docs/getting-started": page("Getting started", `<p>Docs</p><a href="/docs/getting-started">self</a>`),
   "/sitemap-only": page("Sitemap only", `<p>Only reachable via sitemap.xml</p>`),
   "/settings": page("Settings", `<p>Route referenced only inside the JS bundle</p>`),

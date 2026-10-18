@@ -60,7 +60,7 @@ export const stackById = (id: string) => STACKS.find((s) => s.id === id) ?? STAC
 
 /* ---------------- briefs (untrusted-fenced) ---------------- */
 
-export function siteBrief(inv: Investigation, max = 14_000): string {
+export function siteBrief(inv: Investigation, max = 22_000): string {
   const lines: string[] = [];
   lines.push(`Target: ${inv.targets.map((t) => t.value).join(", ")} (${inv.pages.length} pages, ${inv.assets.length} assets)`);
   lines.push(`Technologies: ${inv.technologies.filter((t) => t.confidence >= 0.6).map((t) => `${t.name}${t.version ? " " + t.version : ""}`).join(", ") || "none confidently detected"}`);
@@ -70,6 +70,12 @@ export function siteBrief(inv: Investigation, max = 14_000): string {
   for (const f of inv.features) lines.push(`- ${f.name} [${f.provenance}, ${Math.round(f.confidence * 100)}%]: ${f.description}`);
   if (inv.endpoints.length) { lines.push("\nENDPOINTS"); for (const e of inv.endpoints.slice(0, 40)) lines.push(`- ${e.kind} ${e.method ?? "?"} ${e.url}`); }
   if (inv.designTokens) lines.push(`\nDESIGN TOKENS\ncolors: ${inv.designTokens.colors.slice(0, 10).map((c) => c.value).join(", ")}\nfonts: ${inv.designTokens.fonts.map((f) => f.value).join(", ")}\nvariables: ${Object.entries(inv.designTokens.variables).slice(0, 20).map(([k, v]) => `${k}:${v}`).join("; ")}`);
+  const withText = [...inv.pages].filter((p) => p.text).sort((a, b) => a.depth - b.depth).slice(0, 8);
+  if (withText.length) {
+    lines.push("\nPAGE TEXT (what visitors read, as Markdown; reproduce real copy rather than inventing it)");
+    let budget = 7_000;
+    for (const p of withText) { if (budget <= 0) break; const t = p.text!.slice(0, Math.min(1_400, budget)); budget -= t.length; lines.push(`--- ${new URL(p.url).pathname}${t.length < p.text!.length ? " (excerpt)" : ""}\n${t}`); }
+  }
   if (inv.limitations.length) lines.push("\nKNOWN LIMITS\n" + inv.limitations.map((l) => `- ${l}`).join("\n"));
   return untrusted("site-analysis", lines.join("\n"), max);
 }

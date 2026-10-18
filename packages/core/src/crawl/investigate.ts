@@ -17,7 +17,8 @@ import { fingerprint, mergeTechnologies } from "../analyze/fingerprint.js";
 import { detectLibraries, type DetectedLibrary, type RetireRepository } from "../analyze/retire.js";
 import { decodeInlineSourceMap, parseSourceMap } from "../analyze/sourcemap.js";
 import { depsFromCdnUrls } from "../analyze/deps.js";
-import { findSecretLikeValues } from "../util/redact.js";
+import { findSecretLikeValues, redactForStorage } from "../util/redact.js";
+import { htmlToMarkdown } from "../analyze/markdown.js";
 import { inferFeatures } from "../analyze/features.js";
 import { deriveFindings } from "../analyze/findings.js";
 import { computeCoverage } from "../analyze/coverage.js";
@@ -368,6 +369,7 @@ export async function investigate(opts: InvestigateOptions): Promise<Investigati
       title: ex.title, links: ex.links, scripts: ex.scripts, styles: ex.styles, images: ex.images, forms: ex.forms, headings: ex.headings,
       landmarks: ex.landmarks, meta: ex.meta, interactive: ex.interactive, a11y: ex.a11y,
     });
+    try { const m = htmlToMarkdown(html, finalUrl, { maxChars: 6000 }); if (m.text) { base.text = redactForStorage("page.md", m.text).text; if (m.truncated) base.textTruncated = true; } } catch { /* page text is a bonus; structure above is already recorded */ }
     pages.push(base);
 
     for (const s of ex.scripts) registerAsset(s, "script", finalUrl);

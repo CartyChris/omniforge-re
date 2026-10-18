@@ -13,7 +13,7 @@ import { REBUILD_MODES, STACKS, investigate, rebuildInstruction, siteBrief, untr
 import { nodeNet } from "./net.js";
 
 const VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
-const SECTIONS = ["overview", "pages", "features", "endpoints", "technologies", "findings", "dependencies", "design", "limitations"] as const;
+const SECTIONS = ["overview", "pages", "content", "features", "endpoints", "technologies", "findings", "dependencies", "design", "limitations"] as const;
 const MAX_KEPT = 20;
 
 export interface McpOptions { version?: string; allowPrivate?: boolean; analyzeTimeoutMs?: number; investigate?: typeof investigate }
@@ -36,6 +36,7 @@ function section(inv: Investigation, name: (typeof SECTIONS)[number]): string {
   switch (name) {
     case "overview": return siteBrief(inv, 14_000);
     case "pages": return inv.pages.slice(0, 80).map((p) => `${p.status ?? "?"} ${p.url} — ${clip(p.title ?? "", 80)} (forms ${p.forms.length}, links ${p.links.length})`).join("\n") || "No pages were fetched.";
+    case "content": return inv.pages.filter((p) => p.text).slice(0, 12).map((p) => `--- ${p.url}${p.textTruncated ? " (truncated)" : ""}\n${p.text}`).join("\n\n") || "No page text was captured.";
     case "features": return inv.features.map((f) => `- ${f.id}: ${f.name} [${f.provenance}, ${Math.round(f.confidence * 100)}%] ${clip(f.description, 200)}`).join("\n") || "No features were inferred.";
     case "endpoints": return inv.endpoints.slice(0, 80).map((e) => `${e.kind} ${e.method ?? "?"} ${e.url}`).join("\n") || "No endpoints were found.";
     case "technologies": return inv.technologies.map((t) => `${t.name}${t.version ? " " + t.version : ""} (${t.category}, ${Math.round(t.confidence * 100)}%)`).join("\n") || "None detected.";
