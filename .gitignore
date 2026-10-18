@@ -17,3 +17,7 @@ apps/desktop/src-tauri/binaries/
 apps/desktop/src-tauri/resources/playwright-core/
 apps/desktop/src-tauri/icons/source.png
 .vercel/
+
+# deep-research working folders (final report is copied to docs/)
+research_notes/
+reports/
