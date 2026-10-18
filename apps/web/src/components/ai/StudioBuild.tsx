@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { toast } from "sonner";
-import { ArrowRight, Hammer, Loader2, Sparkles, TriangleAlert } from "lucide-react";
+import { ArrowRight, Hammer, Loader2, Sparkles, SquareTerminal, TriangleAlert } from "lucide-react";
 import { DEV_MODES, REBUILD_MODES, STACKS, buildDevPlan, buildFeatureExtractionPlan, buildRebuildPlan, type AgentTask, type DevMode, type Investigation, type RebuildMode } from "@omniforge/core";
 import { useApp } from "@/lib/store";
 import { runPlan } from "@/lib/ai";
@@ -98,7 +98,7 @@ export function BuildPanel() {
               : <p className="self-end pb-2 text-xs text-warn">Writing to a local folder and running tests needs the desktop app.</p>}
           </div>
           {where === "browser" && <p className="flex items-start gap-2 text-xs text-muted"><TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-warn" />In the browser, agents write code but can't execute it, so build/test commands aren't run (those checks are dropped from the plan, not faked). The desktop app runs them in your folder after you approve each command.</p>}
-          <div className="flex flex-wrap items-center justify-between gap-3"><span className="text-xs text-bad">{invalid}</span><Button variant="primary" size="lg" icon={<Sparkles className="size-4" />} disabled={!!invalid || (where === "local" && !rootId)} onClick={generate}>Generate plan</Button></div>
+          <div className="flex flex-wrap items-center justify-between gap-3"><span className="text-xs text-bad">{invalid}</span><div className="flex flex-wrap gap-2">{kind === "rebuild" && inv && !invalid && <Button variant="secondary" size="lg" icon={<SquareTerminal className="size-4" />} title="Open the Agent CLI tab with this rebuild pre-filled (needs the macOS app and Claude Code)" onClick={() => nav(`/studio?${new URLSearchParams({ tab: "cli", inv: inv.id, mode: rebuildMode, stack: stackId, ...(["feature-only", "synthesis"].includes(rebuildMode) && featureIds.length ? { features: featureIds.join(",") } : {}), ...(rebuildMode === "enhanced" && improvements.trim() ? { improve: improvements.trim() } : {}) })}`)}>…with Claude Code</Button>}<Button variant="primary" size="lg" icon={<Sparkles className="size-4" />} disabled={!!invalid || (where === "local" && !rootId)} onClick={generate}>Generate plan</Button></div></div>
         </CardBody>
       </Card>
 

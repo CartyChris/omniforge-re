@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 // @ts-expect-error plain ESM fixture
 import { createFixture } from "../../../fixtures/server.mjs";
 import { investigate } from "../src/crawl/investigate";
-import { DEV_MODES, REBUILD_MODES, buildDevPlan, buildFeatureExtractionPlan, buildRebuildPlan, featureBrief, siteBrief, STACKS } from "../src/ai/plans";
+import { DEV_MODES, REBUILD_MODES, buildDevPlan, buildFeatureExtractionPlan, buildRebuildPlan, rebuildInstruction, featureBrief, siteBrief, STACKS } from "../src/ai/plans";
 import { executeGraph, executeTool, memoryFS, runAgentTask, runChecks, task, validateGraph, type RunContext, type ToolContext } from "../src/ai/agents";
 import { scanInjection, untrusted } from "../src/ai/untrusted";
 import { finalize } from "../src/ai/models";
@@ -221,6 +221,23 @@ describe("plans from a real investigation", () => {
     const all = buildRebuildPlan({ inv, mode: "functional", stackId: "nextjs" });
     expect(all.filter((t) => t.objective.startsWith("Implement the “")).length).toBe(Math.min(inv.features.length, 12));
     expect(buildRebuildPlan({ inv, mode: "feature-only", stackId: "nextjs", featureIds: [inv.features[0]!.id] }).filter((t) => t.objective.startsWith("Implement the “"))).toHaveLength(1);
+  });
+  it("rebuildInstruction carries the mode, stack, selected features and improvements — and only what applies", () => {
+    const ids = inv.features.slice(0, 2).map((f) => f.id);
+    const t = rebuildInstruction({ inv, mode: "enhanced", stackId: "fastapi", featureIds: ids, improvements: "add rate limiting" });
+    expect(t).toContain("Mode: enhanced");
+    expect(t).toContain("Python FastAPI service");
+    expect(t).toContain("app/main.py");
+    expect(t).toContain("pytest -q");
+    expect(t).toContain("add rate limiting");
+    for (const f of inv.features.slice(0, 2)) expect(t).toContain(f.name);
+    // improvements are only meaningful in "enhanced"; test command only when the stack has one
+    const plain = rebuildInstruction({ inv, mode: "functional", stackId: "static", improvements: "add rate limiting" });
+    expect(plain).not.toContain("rate limiting");
+    expect(plain).not.toMatch(/Write tests/);
+    expect(plain).toMatch(/INDEPENDENT implementation/);
+    // the analysis itself is never inlined here (it travels as the fenced background brief)
+    expect(plain).not.toContain("<<<");
   });
   it("feature extraction builds spec→implement→integrate→test→review and rejects unknown features", () => {
     const plan = buildFeatureExtractionPlan({ inv, featureId: inv.features[0]!.id, destStack: "react-vite", destFiles: ["src/App.tsx"], request: "improve" });

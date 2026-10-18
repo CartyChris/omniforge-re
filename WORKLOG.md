@@ -41,5 +41,7 @@ Decisions, what was tried, what failed. Newest last. See FEATURES.md for the sta
 
 - CLI-direct agent mode (roadmap #5): recorded a real Claude Code stream-json transcript first and wrote the normaliser against it (the research had only read the docs). The first probe I ran inherited this session's `CLAUDE_*` environment, so the child CLI reported *this* session's id — the product runner uses the allow-listed `sanitizedEnv`, so that cannot happen there. Verified live that `--setting-sources user --tools … --strict-mcp-config` stops a project `PreToolUse` hook from running (canary file never created). A `rm -rf *` I typed in a probe was (rightly) blocked by the harness's safety check; the probe was redone with `mktemp` and no deletion.
 
+- “Rebuild with Claude Code”: `rebuildInstruction` (core, mutation-checked: improvements only apply in enhanced mode, test command only when the stack has one) + query-param prefill in the Agent CLI tab, seeded once when the project hydrates. The analysis still travels as the fenced background brief, never inlined in the instruction.
+
 ## Known gaps / not done
 See FEATURES.md rows marked N or P. Blocked by environment: Vercel deploy to the user's account (connector bound to another team); Apple signing (no certificate); live cloud-model and OSV.dev calls (no keys / egress).

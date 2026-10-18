@@ -1,7 +1,8 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Check, FilePlus2, FileX2, Loader2, PencilLine, RotateCcw, SquareTerminal, StopCircle, Terminal, TriangleAlert } from "lucide-react";
-import { claudeAgentArgs, commandRuleProblem, siteBrief, type AgentEvent, type Investigation } from "@omniforge/core";
+import { useSearchParams } from "react-router";
+import { REBUILD_MODES, claudeAgentArgs, commandRuleProblem, rebuildInstruction, siteBrief, type RebuildMode, type AgentEvent, type Investigation } from "@omniforge/core";
 import { useApp } from "@/lib/store";
 import { readSSE } from "@/lib/bridge";
 import { listRoots, type RootInfo } from "@/lib/local";
@@ -24,12 +25,21 @@ export function CliAgentPanel() {
   const { bridge, bridgeState, bridgeInfo, project, settings } = useApp();
   const cli = bridgeInfo?.clis.find((c: { id: string }) => c.id === "claude-code") as { status: string; version?: string } | undefined;
   const invs = ((project?.investigations ?? []) as unknown as Investigation[]).filter((i) => i.status === "done");
+  const [params] = useSearchParams();
+  // "Rebuild with Claude Code" arrives as ?inv=&mode=&stack=[&features=a,b][&improve=…]: pre-fill the analysis and the instruction (still editable, still behind the consent dialog).
   const [roots, setRoots] = useState<RootInfo[]>([]); const [root, setRoot] = useState(""); const [prompt, setPrompt] = useState(""); const [inv, setInv] = useState("none");
   const [cmds, setCmds] = useState<string[]>([]); const [cmdText, setCmdText] = useState("");
   const [busy, setBusy] = useState(false); const [events, setEvents] = useState<AgentEvent[]>([]); const [start, setStart] = useState<Start | null>(null); const [done, setDone] = useState<Done | null>(null); const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set()); const [allowDeletes, setAllowDeletes] = useState(false); const [view, setView] = useState<string | null>(null); const [sides, setSides] = useState<{ base: string | null; next: string | null; binary: boolean } | null>(null);
   const [applied, setApplied] = useState<{ applied: string[]; conflicts: { path: string; reason: string }[]; refused: { path: string; reason: string }[]; backup: string | null } | null>(null);
   const abort = useRef<AbortController | null>(null); const feed = useRef<HTMLDivElement>(null);
+  const seeded = useRef(false);
+  useEffect(() => { // the project may hydrate after first render, so seed once as soon as the analysis exists
+    if (seeded.current) return; const id = params.get("inv"); const mode = params.get("mode") as RebuildMode | null; if (!id || !mode) { seeded.current = true; return; }
+    const found = invs.find((i) => i.id === id); if (!found) return; seeded.current = true;
+    if (!REBUILD_MODES.some((m) => m.id === mode)) return;
+    setInv(found.id); setPrompt(rebuildInstruction({ inv: found, mode, stackId: params.get("stack") ?? "react-vite", featureIds: params.get("features")?.split(",").filter(Boolean), improvements: params.get("improve") ?? undefined }));
+  }, [invs.length]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (bridgeState === "connected") void listRoots().then((r) => { setRoots(r); if (!root && r[0]) setRoot(r[0].id); }).catch(() => {}); }, [bridgeState]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { feed.current?.scrollTo({ top: feed.current.scrollHeight }); }, [events.length]);
   useEffect(() => { if (!view || !done || !bridge) { setSides(null); return; } let on = true; void bridge.get(`/bridge/agent/runs/${done.runId}/file?path=${encodeURIComponent(view)}`).then((s) => on && setSides(s as typeof sides)).catch(() => on && setSides(null)); return () => { on = false; }; }, [view, done, bridge]);

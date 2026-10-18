@@ -134,6 +134,25 @@ export function buildRebuildPlan(o: RebuildOptions): AgentTask[] {
   return [spec, scaffold, ...featureTasks, ui, tests, review, fix];
 }
 
+/**
+ * The prompt for a CLI coding agent (Claude Code) that rebuilds an analysed app inside an isolated copy of a folder.
+ * The analysis itself travels separately as the fenced background brief; this is only the instruction.
+ */
+export function rebuildInstruction(o: Omit<RebuildOptions, "inv"> & { inv: Investigation }): string {
+  const stack = stackById(o.stackId);
+  const features = (o.featureIds?.length ? o.inv.features.filter((f) => o.featureIds!.includes(f.id)) : []).slice(0, 12);
+  return [
+    `Rebuild the application described in the background analysis of “${o.inv.name}” in this folder.`,
+    `Mode: ${o.mode}. ${MODE_GUIDE[o.mode]}`,
+    `Target stack: ${stack.label}. ${stack.hint}${o.stackNote ? ` ${o.stackNote}` : ""}${o.backend ? ` Backend: ${o.backend}.` : ""}`,
+    features.length ? `Implement these features: ${features.map((f) => f.name).join("; ")}.` : "",
+    o.improvements && o.mode === "enhanced" ? `Then apply these improvements: ${o.improvements}` : "",
+    stack.files.length ? `The project must contain at least: ${stack.files.join(", ")}, plus a README.md with run instructions and an .env.example listing variable NAMES only.` : "",
+    stack.test ? `Write tests that can fail and make \`${stack.test}\` pass${stack.build ? `; \`${stack.build}\` must also succeed` : ""} — only if you are allowed to run commands, otherwise say plainly that you could not run them.` : "",
+    "This is an INDEPENDENT implementation from observed behaviour: do not copy third-party proprietary code, and never invent private server-side logic as if it were observed. No placeholder or TODO stubs.",
+  ].filter(Boolean).join("\n");
+}
+
 /* ---------------- single-feature extraction ---------------- */
 
 export interface ExtractOptions {

@@ -178,3 +178,29 @@ test("desktop UI: Agent CLI tab — consent shows the exact command, live feed, 
   const trail = page.getByTestId("audit-trail"); await expect(trail).toContainText("agent run started"); await expect(trail).toContainText("agent changes applied"); await expect(trail).toContainText("agent apply undone");
   noErrors(errors);
 });
+
+test("desktop UI: 'with Claude Code' hands an analysed rebuild to the Agent CLI tab, pre-filled and still behind consent", async ({ page, request }) => {
+  const errors = await asDesktop(page);
+  const ok = await request.post("http://127.0.0.1:4466/bridge/roots", { data: { path: DIR, writable: true }, headers: { authorization: `Bearer ${UI_TOKEN}`, origin: "tauri://localhost", "x-omniforge-bridge": "1" } });
+  expect(ok.ok()).toBe(true);
+  const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET,POST,DELETE,OPTIONS" };
+  await page.route("**/bridge/info*", async (route) => { const res = await route.fetch(); const j = await res.json(); j.clis = [{ id: "claude-code", name: "Claude Code", status: "ready", version: "9.9.9", method: "print-stream-json", methods: [], agentic: true }]; await route.fulfill({ response: res, json: j, headers: { ...res.headers(), ...cors } }); });
+  let started = false; await page.route("**/bridge/agent/run", (route) => { started = true; return route.abort(); });
+  await page.goto("/#/analyze");
+  await expect(page.getByText("Desktop connected")).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("button", { name: "Choose folder…" }).click();
+  await page.getByRole("button", { name: "Analyse folder" }).click();
+  await page.getByText("Open results").waitFor({ timeout: 30_000 });
+  await page.goto("/#/studio?tab=build");
+  await page.getByRole("radio", { name: /^Rebuild an analysed app$/ }).or(page.getByText("Rebuild an analysed app")).first().click();
+  await page.getByRole("radio", { name: /Modernised version/ }).click();
+  await page.getByRole("button", { name: "…with Claude Code" }).click();
+  await expect(page).toHaveURL(/tab=cli/); await expect(page).toHaveURL(/mode=modernized/);
+  const prompt = page.getByLabel("What should the agent do");
+  await expect(prompt).toHaveValue(/Mode: modernized\. Preserve behaviour but choose modern/); await expect(prompt).toHaveValue(/Target stack: /);
+  expect(started).toBe(false); // pre-filled only — nothing runs until the user presses Run and consents
+  await page.getByRole("button", { name: "Run on a copy" }).click();
+  await expect(page.getByRole("dialog")).toContainText("Run Claude Code on a copy of");
+  expect(started).toBe(false);
+  noErrors(errors);
+});
