@@ -43,5 +43,7 @@ Decisions, what was tried, what failed. Newest last. See FEATURES.md for the sta
 
 - “Rebuild with Claude Code”: `rebuildInstruction` (core, mutation-checked: improvements only apply in enhanced mode, test command only when the stack has one) + query-param prefill in the Agent CLI tab, seeded once when the project hydrates. The analysis still travels as the fenced background brief, never inlined in the instruction.
 
+- Scaffold catalogue (roadmap #11): stack presets 15 → 34 (Astro, Nuxt, Remix, Angular, Django, Flask, Rails, Laravel, Go, Spring, ASP.NET, Flutter, Android, iOS, Supabase, Go/Node CLI, VS Code/Firefox extensions, Discord bot). A table test checks every preset (unique ids, safe relative file paths, no shell metacharacters in test commands, valid plan graph, scaffold acceptance equals the preset's files); a mutation with a hostile test command failed it. Whether a model produces *good* code for each stack is not measured.
+
 ## Known gaps / not done
 See FEATURES.md rows marked N or P. Blocked by environment: Vercel deploy to the user's account (connector bound to another team); Apple signing (no certificate); live cloud-model and OSV.dev calls (no keys / egress).

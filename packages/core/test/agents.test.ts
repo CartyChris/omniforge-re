@@ -239,6 +239,20 @@ describe("plans from a real investigation", () => {
     // the analysis itself is never inlined here (it travels as the fenced background brief)
     expect(plain).not.toContain("<<<");
   });
+  it("every stack preset is well-formed and yields a valid rebuild graph whose scaffold acceptance matches the stack", () => {
+    const ids = STACKS.map((s) => s.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(STACKS.length).toBeGreaterThanOrEqual(30);
+    for (const s of STACKS) {
+      expect(s.hint.length, s.id).toBeGreaterThan(10);
+      for (const f of s.files) { expect(f, s.id).not.toMatch(/^\/|\.\.|\\|\s/); }
+      expect(new Set(s.files).size, s.id).toBe(s.files.length);
+      if (s.test) expect(s.test, s.id).not.toMatch(/[;&|`$]/); // preset commands are offered to the agent harness and the Agent CLI allow-list
+      const plan = buildRebuildPlan({ inv, mode: "functional", stackId: s.id });
+      expect(validateGraph(plan), s.id).toEqual([]);
+      for (const f of s.files) expect(plan[1]!.acceptance, s.id).toContain(`file_exists:${f}`);
+    }
+  });
   it("feature extraction builds spec→implement→integrate→test→review and rejects unknown features", () => {
     const plan = buildFeatureExtractionPlan({ inv, featureId: inv.features[0]!.id, destStack: "react-vite", destFiles: ["src/App.tsx"], request: "improve" });
     expect(plan.map((t) => t.role)).toEqual(["reverse", "development", "development", "testing", "review"]);
