@@ -5,8 +5,9 @@
  * needs; dangerous scopes can be granted only by the desktop UI.
  */
 import http from "node:http";
+import fs from "node:fs";
 import path from "node:path";
-import { analyzeSnapshot, assessRip, discoverLocalServices, effective, investigateSource, type Investigation } from "@omniforge/core";
+import { analyzeSnapshot, assessRip, buildAgentPrompt, discoverLocalServices, effective, investigateSource, type AgentEvent, type Investigation } from "@omniforge/core";
 import { analyzeHandler, probeHandler } from "../handlers.js";
 import { HttpError, UserError, bytesToB64, err, json, readJson, sse } from "../http.js";
 import { BlockedUrlError, ProviderError, RightsError } from "@omniforge/core";
@@ -21,10 +22,12 @@ import { inspectPath } from "./package.js";
 import { applyReaInstall, planReaInstall, ReaJobs, REA_OPS, reaStatus, reaSummary, reaToInvestigation } from "./rea.js";
 import { findChrome, PlaywrightRenderer } from "./render.js";
 import { verifyUrls } from "./verify.js";
+import { AgentRuns, applyChanges, createShadow, listChanges, readSides, runClaudeAgent } from "./agentrun.js";
+import { backupFiles, record as recordChange } from "./changelog.js";
 import type { Deobfuscator } from "@omniforge/core";
 import { nodeStructureExtractor } from "@omniforge/structure/node";
 
-export interface BridgeOptions { port?: number; uiToken?: string; version?: string; allowedOrigins?: string[]; jobsDir?: string; reaDir?: string }
+export interface BridgeOptions { port?: number; uiToken?: string; version?: string; allowedOrigins?: string[]; jobsDir?: string; reaDir?: string; /** tests only: drive this executable as "Claude Code" instead of the installed one */ agentCliPath?: string }
 export interface Bridge { url: string; port: number; auth: BridgeAuth; roots: Roots; jobs: JobManager; close(): Promise<void> }
 
 const ndjson = (lines: Iterable<string>) => { const enc = new TextEncoder(); const it = lines[Symbol.iterator](); return new Response(new ReadableStream<Uint8Array>({ pull(c) { const n = it.next(); if (n.done) c.close(); else c.enqueue(enc.encode(n.value)); } }), { headers: { "content-type": "application/x-ndjson", "cache-control": "no-store" } }); };
@@ -35,6 +38,7 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
   const rea = new ReaJobs(jobs, o.reaDir);
   let renderer: PlaywrightRenderer | null = null;
   const getRenderer = () => (renderer ??= new PlaywrightRenderer({ allowPrivate: true }));
+  const agentRuns = new AgentRuns();
   const structure = nodeStructureExtractor(); // tree-sitter grammars are read from disk on first use
   // webcrack + the QuickJS sandbox are loaded only when a deobfuscation is first requested
   let deob: Deobfuscator | null = null;
@@ -162,6 +166,42 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
       return sse(async (send, signal) => { for await (const e of runCli(a, info, { prompt: String(b.prompt ?? ""), model: b.model, cwd, signal, timeoutMs: 900_000 })) send(e.type, e); send("end", {}); }, req);
     }
 
+    /* ---- CLI-direct agent runs: the CLI edits an isolated copy; changes reach the project only through a reviewed apply ---- */
+    if (is("POST", "/bridge/agent/run")) {
+      need(p, "cli"); need(p, "fs:read"); const b = await readJson(req, 2_000_000);
+      if (b.cli !== "claude-code") return err("Only Claude Code can be driven in agent mode so far (other CLIs are used as text providers).", 400);
+      const a = ADAPTERS.find((x) => x.id === "claude-code")!; const info = o.agentCliPath ? { ...(await probeCli(a)), path: o.agentCliPath, status: "ready" as const } : await probeCli(a);
+      if (!info.path || info.status === "not-installed") return err("Claude Code is not installed on this Mac.", 400);
+      if (info.status === "unsupported-invocation") return err("This version of Claude Code does not expose the non-interactive mode this app needs.", 400);
+      const rt = root(b.root); const prompt = buildAgentPrompt(String(b.prompt ?? ""), typeof b.brief === "string" ? b.brief : undefined);
+      const budget = Math.min(20, Math.max(0.1, Number(b.maxBudgetUsd) || 2));
+      return sse(async (send, signal) => {
+        const shadow = await createShadow(rt.path); agentRuns.add(shadow, String(b.root));
+        send("start", { runId: shadow.id, copied: shadow.copied, bytes: shadow.bytes, skipped: shadow.skipped.slice(0, 100), cli: info.version });
+        let result: AgentEvent | undefined;
+        for await (const e of runClaudeAgent(shadow, { cliPath: info.path!, prompt, model: typeof b.model === "string" ? b.model : undefined, allowedCommands: Array.isArray(b.allowedCommands) ? b.allowedCommands.map(String).slice(0, 12) : [], maxBudgetUsd: budget, signal })) { send("event", e); if (e.type === "result") result = e; }
+        send("done", { runId: shadow.id, ok: result?.type === "result" && result.ok, result, changes: await listChanges(shadow) });
+      }, req);
+    }
+    if ((mm = pathn.match(/^\/bridge\/agent\/runs\/([a-f0-9]{16})(?:\/(changes|file|apply))?$/))) {
+      need(p, "cli"); const run = agentRuns.get(mm[1]!);
+      if (m === "DELETE" && !mm[2]) { await agentRuns.discard(mm[1]!); return json({ ok: true }); }
+      if (m === "GET" && mm[2] === "changes") return json({ changes: await listChanges(run.shadow) });
+      if (m === "GET" && mm[2] === "file") return json(await readSides(run.shadow, url.searchParams.get("path") ?? ""));
+      if (m === "POST" && mm[2] === "apply") {
+        need(p, "fs:write"); const b = await readJson(req, 200_000); const rt = root(run.rootId);
+        if (!rt.writable) return err("Approve this folder as writable before applying changes.", 403);
+        const paths: string[] = Array.isArray(b.paths) ? b.paths.map(String).slice(0, 2000) : [];
+        // back up what will be overwritten or deleted so Applications → Restore can undo the apply
+        const existing = (await listChanges(run.shadow)).filter((c) => paths.includes(c.path) && c.status !== "added").map((c) => path.join(run.shadow.rootPath, c.path)).filter((f) => fs.existsSync(f));
+        const backup = existing.length ? backupFiles(existing) : null;
+        const result = await applyChanges(run.shadow, { paths, allowDeletes: !!b.allowDeletes });
+        if (result.applied.length) recordChange({ action: "agent-apply", detail: `Applied ${result.applied.length} file(s) from a Claude Code run to ${rt.label}`, backup: backup?.dir, files: result.applied });
+        return json({ ...result, backup: backup?.dir ?? null });
+      }
+      return err("Not found", 404);
+    }
+
     /* ---- git / repos ---- */
     if (is("POST", "/bridge/repo/inspect")) {
       need(p, "git"); const b = await readJson(req, 100_000); const urls: string[] = (b.urls ?? []).slice(0, 8);
@@ -247,7 +287,7 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
   void path;
   return {
     url: `http://127.0.0.1:${port}`, port, auth, roots, jobs,
-    async close() { await jobs.shutdown(); await renderer?.close(); await new Promise<void>((r) => { server.closeAllConnections?.(); server.close(() => r()); }); },
+    async close() { await agentRuns.closeAll(); await jobs.shutdown(); await renderer?.close(); await new Promise<void>((r) => { server.closeAllConnections?.(); server.close(() => r()); }); },
   };
 }
 export type { Investigation };

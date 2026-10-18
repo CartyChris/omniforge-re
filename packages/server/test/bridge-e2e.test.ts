@@ -31,7 +31,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 beforeAll(async () => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), "omni-e2e-"));
   process.env.OMNIFORGE_HOME = path.join(tmp, "home"); process.env.REA_BIN = path.resolve(__dirname, "../node_modules/.bin/rea");
-  bridge = await startBridge({ jobsDir: path.join(tmp, "jobs"), reaDir: path.join(tmp, "rea") });
+  bridge = await startBridge({ jobsDir: path.join(tmp, "jobs"), reaDir: path.join(tmp, "rea"), agentCliPath: path.join(__dirname, "fixtures/fake-claude.mjs") });
   fx = createFixture(); fxBase = await fx.listen();
 }, 30_000);
 afterAll(async () => { await bridge.close(); await fx.close(); fs.rmSync(tmp, { recursive: true, force: true }); delete process.env.OMNIFORGE_HOME; delete process.env.REA_BIN; });
@@ -220,6 +220,43 @@ describe("privileged capabilities through the bridge (desktop UI token)", () => 
       expect(on.coverage.checks.find((c: any) => c.id === "deobfuscation")).toMatchObject({ status: "done" });
     } finally { srv.close(); }
   }, 120_000);
+
+  it("agent mode over the bridge: the CLI edits an isolated copy; changes are reviewed, then applied with a backup; conflicts and read-only folders are respected", async () => {
+    const proj = path.join(tmp, "agent-proj"); fs.mkdirSync(path.join(proj, "src"), { recursive: true });
+    fs.writeFileSync(path.join(proj, "src/app.js"), "console.log(1);\n"); fs.writeFileSync(path.join(proj, "old.txt"), "old\n"); fs.writeFileSync(path.join(proj, ".env"), "SECRET=1\n");
+    const ro = (await ui("POST", "/bridge/roots", { path: proj, writable: false })).json;
+    // a web session without the cli/fs scopes cannot start a run
+    expect((await call("POST", "/bridge/agent/run", { origin: WEB, body: { cli: "claude-code", root: ro.id, prompt: "x" } })).status).toBe(401);
+    const bad = await ui("POST", "/bridge/agent/run", { cli: "gemini", root: ro.id, prompt: "x" }); expect(bad.status).toBe(400);
+    const empty = await ui("POST", "/bridge/agent/run", { cli: "claude-code", root: ro.id, prompt: "   " }); expect(empty.status).toBeGreaterThanOrEqual(400);
+
+    // run (the scripted CLI, default 'edit' behaviour): SSE start → events → done with the change list
+    const r = await call("POST", "/bridge/agent/run", { token: bridge.auth.uiToken, origin: "tauri://localhost", body: { cli: "claude-code", root: ro.id, prompt: "Add a header comment" } });
+    expect(r.status).toBe(200);
+    const blocks = r.text.split("\n\n").filter(Boolean).map((b) => ({ ev: b.match(/^event: (.+)$/m)?.[1], data: JSON.parse(b.match(/^data: (.+)$/m)?.[1] ?? "null") }));
+    const start = blocks.find((b) => b.ev === "start")!.data; const done = blocks.find((b) => b.ev === "done")!.data;
+    expect(start.skipped.some((k: any) => k.path === ".env")).toBe(true); expect(start.copied).toBe(2);
+    expect(done.ok).toBe(true); expect(done.changes.map((c: any) => `${c.status}:${c.path}`)).toEqual(["added:logo.bin", "deleted:old.txt", "modified:src/app.js", "added:src/new.js"]);
+    expect(fs.readFileSync(path.join(proj, "src/app.js"), "utf8")).toBe("console.log(1);\n"); // untouched until apply
+    const id = start.runId;
+
+    // review
+    const file = await ui("GET", `/bridge/agent/runs/${id}/file?path=${encodeURIComponent("src/app.js")}`); expect(file.json.base).toBe("console.log(1);\n"); expect(file.json.next).toContain("edited by agent");
+    expect((await ui("GET", `/bridge/agent/runs/${id}/changes`)).json.changes).toHaveLength(4);
+
+    // a read-only folder cannot be applied to
+    expect((await ui("POST", `/bridge/agent/runs/${id}/apply`, { paths: ["src/app.js"] })).status).toBe(403);
+    const rw = (await ui("POST", "/bridge/roots", { path: proj, writable: true })).json; expect(rw.id).toBe(ro.id); // same folder, now writable
+    const ok = await ui("POST", `/bridge/agent/runs/${id}/apply`, { paths: ["src/app.js", "src/new.js", "old.txt"] });
+    expect(ok.status).toBe(200); expect(ok.json.applied.sort()).toEqual(["src/app.js", "src/new.js"]); expect(ok.json.refused).toEqual([{ path: "old.txt", reason: "deletions were not enabled" }]);
+    expect(fs.readFileSync(path.join(proj, "src/app.js"), "utf8")).toContain("edited by agent"); expect(fs.existsSync(path.join(proj, "old.txt"))).toBe(true);
+    expect(ok.json.backup).toBeTruthy(); // the overwritten file was backed up so it can be restored
+    expect((await ui("GET", "/bridge/changes")).json.changes.some((c: any) => c.action === "agent-apply" && c.files.includes("src/app.js"))).toBe(true);
+
+    // discarding removes the copy
+    expect((await ui("DELETE", `/bridge/agent/runs/${id}`)).json).toEqual({ ok: true });
+    expect((await ui("GET", `/bridge/agent/runs/${id}/changes`)).status).toBeGreaterThanOrEqual(400);
+  }, 60_000);
 
   it("detects the REAL Claude Code CLI and lists it as usable (skipped if not installed)", async () => {
     const r = await ui("GET", "/bridge/cli");

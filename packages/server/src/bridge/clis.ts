@@ -143,7 +143,7 @@ export async function* runCli(a: CliAdapter, info: CliInfo, o: RunOptions): Asyn
 }
 
 /** CLIs authenticate with their own stored login; pass through only their own documented key variables. */
-function passEnvFor(id: string): Record<string, string> {
+export function passEnvFor(id: string): Record<string, string> {
   const map: Record<string, string[]> = { "claude-code": ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"], codex: ["OPENAI_API_KEY", "CODEX_HOME"], gemini: ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_CLOUD_PROJECT"], opencode: ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"], aider: ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"] };
   const out: Record<string, string> = {};
   for (const k of map[id] ?? []) if (process.env[k]) out[k] = process.env[k]!;

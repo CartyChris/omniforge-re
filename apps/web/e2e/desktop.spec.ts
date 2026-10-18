@@ -126,3 +126,55 @@ test("desktop: Verify compares a rebuild with its reference in real Chromium; Re
   await expect(page.getByTestId("audit-trail").or(page.locator("body"))).toBeVisible();
   noErrors(errors);
 });
+
+test("desktop UI: Agent CLI tab — consent shows the exact command, live feed, per-file diff review, apply and undo (bridge responses stubbed; the engine side is covered by the server tests)", async ({ page, request }) => {
+  const errors = await asDesktop(page);
+  // approve a writable folder directly through the engine API (the same call the folder picker makes)
+  const ok = await request.post("http://127.0.0.1:4466/bridge/roots", { data: { path: DIR, writable: true }, headers: { authorization: `Bearer ${UI_TOKEN}`, origin: "tauri://localhost", "x-omniforge-bridge": "1" } });
+  expect(ok.ok()).toBe(true);
+  const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET,POST,DELETE,OPTIONS" };
+  const ID = "0123456789abcdef"; const seen: { method: string; url: string; body?: unknown }[] = [];
+  const sse = (blocks: [string, unknown][]) => blocks.map(([e, d]) => `event: ${e}\ndata: ${JSON.stringify(d)}\n\n`).join("");
+  await page.route("**/bridge/info*", async (route) => { const res = await route.fetch(); const j = await res.json(); j.clis = [{ id: "claude-code", name: "Claude Code", status: "ready", version: "9.9.9", method: "print-stream-json", methods: [], agentic: true }]; await route.fulfill({ response: res, json: j, headers: { ...res.headers(), ...cors } }); });
+  await page.route(`**/bridge/agent/**`, async (route) => {
+    const req = route.request(); const u = new URL(req.url()); if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+    seen.push({ method: req.method(), url: u.pathname + u.search, body: req.postData() ? JSON.parse(req.postData()!) : undefined });
+    const json = (o: unknown) => route.fulfill({ status: 200, headers: { ...cors, "content-type": "application/json" }, body: JSON.stringify(o) });
+    if (u.pathname === "/bridge/agent/run") return route.fulfill({ status: 200, headers: { ...cors, "content-type": "text/event-stream" }, body: sse([
+      ["start", { runId: ID, copied: 3, bytes: 1200, skipped: [{ path: ".env", reason: "credential-style file — never shown to the CLI" }], cli: "9.9.9" }],
+      ["event", { type: "init", model: "m", tools: [] }], ["event", { type: "text", text: "Adding the header comment." }], ["event", { type: "tool", name: "Edit", summary: "Edit src/app.js", path: "src/app.js" }], ["event", { type: "tool", name: "Write", summary: "Write src/new.js" }],
+      ["event", { type: "result", ok: true, text: "done", costUsd: 0.0123, turns: 3 }],
+      ["done", { runId: ID, ok: true, changes: [{ path: "src/app.js", status: "modified", additions: 1, deletions: 0, binary: false }, { path: "src/new.js", status: "added", additions: 1, deletions: 0, binary: false }, { path: ".env", status: "added", additions: 1, deletions: 0, binary: false, refused: "credential-style files are never applied" }] }]]) });
+    if (u.pathname.endsWith("/file")) return json({ base: "console.log(1);\n", next: "console.log(1);\n// edited by agent\n", binary: false });
+    if (u.pathname.endsWith("/apply")) return json({ applied: ["src/app.js", "src/new.js"], conflicts: [], refused: [], backup: "/tmp/backup-1" });
+    return json({ ok: true });
+  });
+  await page.route("**/bridge/restore", async (route) => { if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors }); seen.push({ method: "POST", url: "/bridge/restore", body: JSON.parse(route.request().postData() ?? "{}") }); await route.fulfill({ status: 200, headers: { ...cors, "content-type": "application/json" }, body: "{}" }); });
+
+  await page.goto("/#/studio?tab=cli");
+  await page.getByLabel("What should the agent do").fill("Add a header comment");
+  await page.getByText("Allow it to run commands").click(); await page.getByRole("button", { name: "npm test" }).click();
+  await page.getByRole("button", { name: "Run on a copy" }).click();
+  // consent: the exact command line and the commands that were allowed
+  const dlg = page.getByRole("dialog");
+  await expect(dlg).toContainText("Run Claude Code on a copy of"); await expect(dlg).toContainText("--setting-sources user"); await expect(dlg).toContainText("Bash(npm test:*)"); await expect(dlg).toContainText("npm test");
+  expect(seen.some((s) => s.url.includes("/run"))).toBe(false); // nothing started before consent
+  await dlg.getByRole("button", { name: "Allow once" }).click();
+  const feed = page.getByTestId("agent-feed");
+  await expect(feed).toContainText("Adding the header comment."); await expect(feed).toContainText("▸ Edit src/app.js"); await expect(feed).toContainText("Finished in 3 turns · $0.012");
+  const run = seen.find((s) => s.url === "/bridge/agent/run")!.body as Record<string, unknown>;
+  expect(run).toMatchObject({ cli: "claude-code", prompt: "Add a header comment", allowedCommands: ["npm test"], maxBudgetUsd: 2 });
+  // review: blocked files can't be selected; the diff opens
+  const list = page.getByTestId("agent-changes");
+  await expect(list.getByLabel("Apply .env")).toBeDisabled(); await expect(list.getByLabel("Apply src/app.js")).toBeChecked();
+  await expect(page.locator(".monaco-diff-editor")).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("button", { name: /Apply 2 files to the project/ }).click();
+  const applied = page.getByTestId("agent-applied"); await expect(applied).toContainText("2 file(s) applied");
+  expect(seen.find((s) => s.url.endsWith("/apply"))!.body).toEqual({ paths: ["src/app.js", "src/new.js"], allowDeletes: false });
+  await applied.getByRole("button", { name: "Undo" }).click();
+  await expect.poll(() => seen.some((s) => s.url === "/bridge/restore" && (s.body as { dir?: string }).dir === "/tmp/backup-1")).toBe(true);
+  // the trail records it
+  await page.goto("/#/settings"); await page.getByRole("tab", { name: "Diagnostics" }).click();
+  const trail = page.getByTestId("audit-trail"); await expect(trail).toContainText("agent run started"); await expect(trail).toContainText("agent changes applied"); await expect(trail).toContainText("agent apply undone");
+  noErrors(errors);
+});
