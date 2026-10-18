@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
-import { Download, Eye, FileClock, KeyRound, Lock, LockOpen, Moon, RotateCcw, ShieldCheck, Sun, Trash2, Upload } from "lucide-react";
+import { Download, Eye, FileClock, History, KeyRound, Lock, LockOpen, Moon, RotateCcw, ShieldCheck, Sun, Trash2, Upload } from "lucide-react";
 import { exportProject, importProject, type Project } from "@omniforge/core";
 import { strToU8, unzipSync, zipSync } from "fflate";
 import { DEFAULT_SETTINGS, useApp, type Settings as S } from "@/lib/store";
 import { db, ls } from "@/lib/storage";
 import { vault } from "@/lib/vault";
 import { appLog } from "@/lib/log";
+import { clearAudit, readAudit, subscribeAudit, type AuditEntry } from "@/lib/audit";
 import { download } from "@/lib/utils";
 import { Badge, Button, Card, CardBody, CardHeader, CardTitle, Field, Input, SectionTitle, Segmented, CopyButton } from "@/components/ui/primitives";
 import { Dialog, DialogContent, Tabs, TabsContent, TabsList, TabsTrigger, ToggleRow } from "@/components/ui/overlay";
@@ -108,6 +109,18 @@ function Data() {
   );
 }
 
+function AuditCard() {
+  const [rows, setRows] = useState<AuditEntry[]>([]);
+  useEffect(() => { let on = true; const load = () => void readAudit().then((r) => on && setRows([...r])); load(); const off = subscribeAudit(load); return () => { on = false; off(); }; }, []);
+  return (
+    <Card><CardHeader><CardTitle className="flex items-center gap-2"><History className="size-4" />Audit trail</CardTitle><div className="flex gap-1.5"><Button size="xs" variant="ghost" icon={<Download className="size-3.5" />} disabled={!rows.length} onClick={() => download("omniforge-audit.json", JSON.stringify(rows, null, 2), "application/json")}>Export</Button><Button size="xs" variant="ghost" disabled={!rows.length} onClick={() => void clearAudit().then(() => toast.success("Audit trail cleared"))}>Clear</Button></div></CardHeader>
+      <div className="max-h-60 overflow-auto p-3 font-mono text-xs leading-relaxed" role="log" aria-label="Audit trail" data-testid="audit-trail">
+        {rows.length === 0 ? <span className="text-faint">Nothing recorded yet. Approvals, credential changes, privacy-mode changes, imports, exports, deletions and analyses are listed here (names only — never secret values).</span> : rows.slice().reverse().map((r, i) => <div key={i} className={r.action === "denied" ? "text-warn" : "text-muted"}><span className="text-faint">{new Date(r.t).toLocaleString([], { hour12: false })}</span> <span className="text-fg">{r.action}</span>{r.detail ? ` — ${r.detail}` : ""}</div>)}
+      </div>
+    </Card>
+  );
+}
+
 function Diagnostics() {
   const lines = useSyncExternalStore(appLog.subscribe, appLog.all);
   const { settings, patchSettings, bridgeState, bridgeInfo, project, models, modelErrors } = useApp();
@@ -119,6 +132,7 @@ function Diagnostics() {
       <Card><CardHeader><CardTitle>Restore previous configuration</CardTitle><Button size="xs" variant="ghost" icon={<RotateCcw className="size-3.5" />} onClick={() => { patchSettings(DEFAULT_SETTINGS); toast.success("Settings reset to defaults"); }}>Reset to defaults</Button></CardHeader><CardBody>
         {prev.length === 0 ? <p className="text-[13px] text-muted">No earlier configurations yet. Each change to your settings is remembered here (without any credentials).</p> : <ul className="divide-y divide-line rounded-lg border border-line">{prev.slice(0, 5).map((s, i) => <li key={i} className="flex flex-wrap items-center gap-3 px-3 py-2 text-[13px]"><div className="min-w-0 flex-1"><span className="font-medium">{s.theme}</span> theme · {s.localOnly ? "local-only" : "cloud allowed"} · optimise {s.optimise} · crawl {s.crawl.maxPages ?? "?"} pages</div><Button size="xs" variant="secondary" onClick={() => restore(s)}>Restore</Button></li>)}</ul>}
       </CardBody></Card>
+      <AuditCard />
       <Card><CardHeader><CardTitle className="flex items-center gap-2"><FileClock className="size-4" />Logs</CardTitle><div className="flex gap-1.5"><CopyButton text={lines.map((l) => `${new Date(l.t).toISOString()} ${l.level.toUpperCase()} [${l.src}] ${l.msg}`).join("\n")} label="Copy" /><Button size="xs" variant="ghost" onClick={() => appLog.clear()}>Clear</Button></div></CardHeader>
         <div className="max-h-72 overflow-auto p-3 font-mono text-xs leading-relaxed" role="log">{lines.length === 0 ? <span className="text-faint">No events recorded this session.</span> : lines.slice().reverse().map((l, i) => <div key={i} className={l.level === "error" ? "text-bad" : l.level === "warn" ? "text-warn" : "text-muted"}><span className="text-faint">{new Date(l.t).toLocaleTimeString([], { hour12: false })}</span> [{l.src}] {l.msg}</div>)}</div></Card>
       <Card><CardHeader><CardTitle className="flex items-center gap-2"><Eye className="size-4" />System report</CardTitle><CopyButton text={diag} label="Copy" /></CardHeader><CardBody><pre className="max-h-64 overflow-auto rounded-lg border border-line bg-bg p-3 font-mono text-xs">{diag}</pre><p className="mt-2 text-xs text-faint">Contains no keys, tokens or analysed content. Safe to paste into a bug report.</p></CardBody></Card>

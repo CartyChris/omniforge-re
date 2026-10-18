@@ -63,8 +63,8 @@ async function save(data: Record<string, string>) {
 
 export const vault = {
   async get(name: string): Promise<string | undefined> { if (await useKeychain()) return (await invoke<string | null>("keychain_get", { name })) ?? undefined; return (await load())[name]; },
-  async set(name: string, value: string) { if (await useKeychain()) return void (await invoke("keychain_set", { name, value })); await save({ ...(await load()), [name]: value }); },
-  async del(name: string) { if (await useKeychain()) return void (await invoke("keychain_delete", { name })); const d = { ...(await load()) }; delete d[name]; await save(d); },
+  async set(name: string, value: string) { void import("./audit").then((a) => a.audit("credential saved", name)); if (await useKeychain()) return void (await invoke("keychain_set", { name, value })); await save({ ...(await load()), [name]: value }); },
+  async del(name: string) { void import("./audit").then((a) => a.audit("credential removed", name)); if (await useKeychain()) return void (await invoke("keychain_delete", { name })); const d = { ...(await load()) }; delete d[name]; await save(d); },
   async names(): Promise<string[]> { if (await useKeychain()) return invoke<string[]>("keychain_names").catch(() => []); try { return Object.keys(await load()); } catch { return []; } },
   async mode(): Promise<"device" | "passphrase" | "keychain"> { if (await useKeychain()) return "keychain"; return (await meta()).mode; },
   async locked() { if (await useKeychain()) return false; const m = await meta(); return m.mode === "passphrase" && !sessionKey; },
@@ -86,5 +86,5 @@ export const vault = {
   },
   lock() { sessionKey = null; cache = null; },
   async disablePassphrase() { const data = await load(); await db.set("vault:meta", { mode: "device" } satisfies Meta); sessionKey = null; cache = null; await save(data); },
-  async wipe() { if (await useKeychain()) { for (const n of await invoke<string[]>("keychain_names")) await invoke("keychain_delete", { name: n }); return; } cache = null; sessionKey = null; await db.del("vault:data"); await db.del("vault:meta"); },
+  async wipe() { void import("./audit").then((a) => a.audit("all credentials erased")); if (await useKeychain()) { for (const n of await invoke<string[]>("keychain_names")) await invoke("keychain_delete", { name: n }); return; } cache = null; sessionKey = null; await db.del("vault:data"); await db.del("vault:meta"); },
 };

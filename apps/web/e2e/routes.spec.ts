@@ -34,3 +34,18 @@ test("first run: onboarding appears once and the choice is remembered", async ({
   await page.reload();
   await expect(page.getByRole("heading", { name: "Welcome to OmniForge RE" })).toHaveCount(0);
 });
+
+test("audit trail: privacy-mode change is recorded, persists across reload, and can be cleared", async ({ page }) => {
+  await prepare(page);
+  await page.goto("/#/settings");
+  await page.getByRole("tab", { name: "Privacy & security" }).click();
+  await page.getByRole("switch", { name: /Local-only mode/ }).click();
+  await page.getByRole("tab", { name: "Diagnostics" }).click();
+  const trail = page.getByTestId("audit-trail");
+  await expect(trail).toContainText(/local-only mode (enabled|disabled)/);
+  await page.reload();
+  await page.getByRole("tab", { name: "Diagnostics" }).click();
+  await expect(page.getByTestId("audit-trail")).toContainText(/local-only mode (enabled|disabled)/);
+  await page.getByRole("button", { name: "Clear" }).first().click();
+  await expect(page.getByTestId("audit-trail")).toContainText("Nothing recorded yet");
+});

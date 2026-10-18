@@ -5,6 +5,7 @@ import { db, ls } from "./storage";
 import { Bridge, desktopLog, isTauri, probe, tauriBridge, type BridgeConn } from "./bridge";
 import { debounce } from "./utils";
 import { appLog } from "./log";
+import { audit } from "./audit";
 
 export interface ProjectIndexItem { id: string; name: string; updatedAt: string; stats: ReturnType<typeof projectStats>; localOnly: boolean }
 export interface LivePage { id: string; url: string; status: number; title: string; depth: number; via: string }
@@ -105,6 +106,7 @@ export const useApp = create<State>((set, get) => ({
   patchSettings(p) {
     const prev = get().settings;
     const settings = { ...prev, ...p };
+    if (p.localOnly !== undefined && p.localOnly !== prev.localOnly) void audit(p.localOnly ? "local-only mode enabled" : "local-only mode disabled");
     // keep the last few configurations so "Restore previous settings" can undo a change (settings never contain secrets)
     if (JSON.stringify(prev) !== JSON.stringify(settings)) ls.set("omniforge.settings.history", [prev, ...ls.get<Settings[]>("omniforge.settings.history", [])].slice(0, 8));
     ls.set("omniforge.settings", settings);
@@ -122,6 +124,7 @@ export const useApp = create<State>((set, get) => ({
   },
   async openProject(id) { persistProject.flush(); const p = await db.get<Project>(`project:${id}`); if (p) { ls.setRaw("omniforge.activeProject", id); set({ project: p }); } },
   async deleteProject(id) {
+    void audit("project deleted", get().projects.find((p) => p.id === id)?.name ?? id);
     await db.del(`project:${id}`);
     let projects = get().projects.filter((p) => p.id !== id); await db.set("projects:index", projects);
     if (get().project?.id === id) { if (projects[0]) await get().openProject(projects[0].id); else { const n = await get().newProject("My workspace"); projects = get().projects; void n; } }
@@ -130,17 +133,19 @@ export const useApp = create<State>((set, get) => ({
   mutate(fn) { const cur = get().project; if (!cur) return; const next = { ...fn(cur), updatedAt: new Date().toISOString() }; set({ project: next }); persistProject(next); },
   async importProjectFile(bytes) {
     const p = coreImport(bytes);
+    void audit("project imported", p.name);
     await db.set(`project:${p.id}`, p);
     const item: ProjectIndexItem = { id: p.id, name: p.name, updatedAt: p.updatedAt, stats: projectStats(p), localOnly: p.localOnly };
     const projects = [item, ...get().projects.filter((i) => i.id !== p.id)]; await db.set("projects:index", projects);
     ls.setRaw("omniforge.activeProject", p.id); set({ projects, project: p });
   },
-  exportActive() { const p = get().project; return p ? coreExport(p) : null; },
+  exportActive() { const p = get().project; if (p) void audit("project exported", p.name); return p ? coreExport(p) : null; },
 
   saveInvestigation(inv) { get().mutate((p) => upsertInvestigation(p, inv)); },
   removeInvestigation(id) { get().mutate((p) => ({ ...p, investigations: p.investigations.filter((i) => (i as Investigation).id !== id) })); },
 
   startJob(j) {
+    void audit("analysis started", `${j.kind}: ${j.targets.slice(0, 3).join(", ")}${j.targets.length > 3 ? ` +${j.targets.length - 3}` : ""}`);
     const job: LiveJob = { ...j, status: "running", progress: 0, counts: { pages: 0, assets: 0, evidence: 0 }, log: [], pages: [], startedAt: Date.now() };
     set((s) => ({ jobs: { ...s.jobs, [job.id]: job } }));
     return job;
