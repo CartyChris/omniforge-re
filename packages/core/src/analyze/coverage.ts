@@ -7,7 +7,7 @@
 import type { Coverage, CoverageCheck } from "../schema.js";
 import type { Facts } from "./facts.js";
 
-export function computeCoverage(f: Facts, cfg: { render: boolean; fetchAssets: boolean; followSitemaps: boolean; respectRobots: boolean; inspectExternal: boolean }): { coverage: Coverage; limitations: string[] } {
+export function computeCoverage(f: Facts, cfg: { render: boolean; deobfuscate?: boolean; fetchAssets: boolean; followSitemaps: boolean; respectRobots: boolean; inspectExternal: boolean }): { coverage: Coverage; limitations: string[] } {
   const checks: CoverageCheck[] = [];
   const limitations: string[] = [];
   const add = (id: string, label: string, status: CoverageCheck["status"], detail: string) => checks.push({ id, label, status, detail });
@@ -37,6 +37,13 @@ export function computeCoverage(f: Facts, cfg: { render: boolean; fetchAssets: b
   const declared = f.sourceMaps.length;
   if (declared) add("sourcemaps", "Source maps", f.sourceMaps.some((m) => m.recovered > 0) ? "done" : "partial", `${f.sourceMaps.filter((m) => m.ok).length}/${declared} declared map(s) parsed; ${f.sourceMaps.reduce((n, m) => n + m.recovered, 0)} file(s) recovered`);
   else add("sourcemaps", "Source maps", "unavailable", "No source map is declared by any script — original sources are not publicly shipped");
+
+  if (cfg.deobfuscate) {
+    const d = f.deobfuscation;
+    if (!d) add("deobfuscation", "JavaScript deobfuscated / bundles split", "unavailable", "Requested, but this analysis ran without the sandboxed deobfuscation engine (desktop app only)");
+    else if (d.candidates === 0) add("deobfuscation", "JavaScript deobfuscated / bundles split", "done", "No script looked minified or obfuscated beyond reading");
+    else add("deobfuscation", "JavaScript deobfuscated / bundles split", d.ok === d.candidates ? "done" : d.ok > 0 ? "partial" : "partial", `${d.ok}/${d.candidates} candidate script(s) made readable${d.unpacked ? ` (${d.unpacked} bundle(s) split into modules)` : ""}${d.failed ? `; ${d.failed} failed` : ""}${d.skipped ? `; ${d.skipped} skipped (third-party, too large, or over the per-run limit)` : ""}. Output is a reconstruction: original names and comments are not recoverable`);
+  }
 
   add("render", "Rendered DOM (JavaScript executed)", f.rendered ? "done" : "skipped", f.rendered ? "Pages rendered in a headless browser" : "Static HTML only. Client-rendered content is invisible without rendering (available in the desktop app / local worker)");
   add("interaction", "Interactive behaviour exercised", f.rendered ? "partial" : "skipped", f.rendered ? "Navigation and safe clicks recorded; no destructive actions attempted" : "Not performed; behaviour specs list unobserved states as “Unknown”");

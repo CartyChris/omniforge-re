@@ -24,5 +24,6 @@ export interface Facts {
   blockedByRobots: string[];
   failedFetches: { url: string; reason: string }[];
   rendered: boolean;
+  deobfuscation?: { attempted: number; ok: number; unpacked: number; failed: number; skipped: number; candidates: number; tool?: string };
   limits: { maxPagesHit: boolean; maxDepthHit: boolean; assetsOverLimit: number; queueRemaining: number };
 }

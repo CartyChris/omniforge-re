@@ -118,6 +118,8 @@ jobs:
           grep -q '"name":"omniforge-bridge"' health.json
           # access control is live: unauthenticated calls are refused
           test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/bridge/info")" = "401"
+          # the sandboxed deobfuscation path (webcrack + QuickJS-WASM) works inside THIS compiled macOS engine, not just on Linux
+          node apps/desktop/scripts/smoke-engine.mjs "$APP/Contents/MacOS/omniforge-bridge"
           if grep -q "ui: UI could not reach the engine" "$LOG"; then echo "::error::the UI could not reach the engine"; cat "$LOG"; kill $PID || true; exit 1; fi
           kill $PID; sleep 2
           pgrep -f omniforge-bridge && { echo "::error::engine outlived the app"; exit 1; } || echo "engine stopped with the app"

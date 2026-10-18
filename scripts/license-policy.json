@@ -1,5 +1,5 @@
 {
-  "_comment": "Production dependencies must be under one of these SPDX licences (for 'A OR B' one allowed alternative is enough; 'A AND B' needs both). Anything else fails scripts/license-audit.mjs unless listed in 'exceptions' with a reason and, where the risk is shipping the code, a bundleMarker that must be ABSENT from the built bundle.",
+  "_comment": "Production dependencies must be under one of these SPDX licences (for 'A OR B' one allowed alternative is enough; 'A AND B' needs both). Anything else fails scripts/license-audit.mjs unless listed in 'exceptions' with a reason and, where the risk is shipping the code, a bundleMarker that must be ABSENT from the built bundle. CC-BY-4.0 (data, e.g. caniuse-lite) is permitted but requires attribution in the shipped app's third-party notices.",
   "allowed": [
     "MIT",
     "ISC",
@@ -13,7 +13,8 @@
     "BlueOak-1.0.0",
     "Python-2.0",
     "W3C-20150513",
-    "W3C"
+    "W3C",
+    "CC-BY-4.0"
   ],
   "exceptions": [
     {

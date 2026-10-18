@@ -20,6 +20,7 @@ import { findSecretLikeValues } from "../util/redact.js";
 import { inferFeatures } from "../analyze/features.js";
 import { deriveFindings } from "../analyze/findings.js";
 import { computeCoverage } from "../analyze/coverage.js";
+import { deobfuscateScripts, type Deobfuscator } from "../analyze/deobfuscate.js";
 import { buildGraph } from "../analyze/graph.js";
 import type { Facts } from "../analyze/facts.js";
 import { parseRobots, type RobotsRules } from "./robots.js";
@@ -50,6 +51,8 @@ export interface InvestigateOptions {
   allowPrivate?: boolean;
   signal?: AbortSignal;
   renderer?: Renderer;
+  /** Optional sandboxed deobfuscation engine (desktop / local worker). Used only when `config.deobfuscate` is on. */
+  deobfuscator?: Deobfuscator;
   onUpdate?: (inv: Investigation) => void;
   /** Extra data retained for the UI (screenshots, rendered interactions). */
   onArtifact?: (a: { kind: "screenshot" | "interactions"; url: string; data: unknown }) => void;
@@ -663,13 +666,34 @@ export async function investigate(opts: InvestigateOptions): Promise<Investigati
     }
     inv.technologies = mergeTechnologies(techLists);
     inv.dependencies = depsFromCdnUrls([...assets.values()].filter((a) => a.kind === "script" || a.kind === "style").map((a) => a.url));
-    inv.files = files;
+    // Optional sandboxed deobfuscation. Results are RECONSTRUCTED files kept apart from `files` (recovered sources) so they are never analysed or labelled as recovered.
+    const reconFiles: SourceFile[] = []; let deobf: Facts["deobfuscation"];
+    if (cfg.deobfuscate && opts.deobfuscator) {
+      say("info", "Deobfuscating minified or obfuscated first-party scripts in a sandbox…");
+      const r = await deobfuscateScripts(jsText, opts.deobfuscator, { firstParty: inScope, signal: opts.signal });
+      reconFiles.push(...r.files);
+      deobf = { ...r.stats, tool: r.results.find((x) => x.out.ok)?.out.tool };
+      for (const x of r.results) {
+        if (!x.out.ok) { addEv({ kind: "unavailable", method: "deobfuscate", source: x.url, confidence: 1, summary: `Could not deobfuscate (${x.why}): ${x.out.error ?? x.out.notes.join("; ") ?? "no output"}` }); continue; }
+        addEv({ kind: "reconstructed", method: x.out.tool, source: x.url, confidence: 0.6, summary: `Made readable (${x.why})${x.out.unpacked ? `, split into ${x.paths.length} module(s)` : ""}: ${x.paths.slice(0, 3).join(", ")}${x.paths.length > 3 ? "…" : ""}. Original names and comments are not recoverable.` });
+        // readable code often reveals what string-array obfuscation hid: look for endpoints again
+        const readable = x.out.modules?.length ? x.out.modules.map((m) => m.code).join("\n") : x.out.code ?? "";
+        for (const ep of analyzeJs(readable.slice(0, 1_500_000), { maxAstBytes: 1_500_000 }).endpoints) {
+          const abs = (() => { try { return new URL(ep.url, x.url).toString(); } catch { return ep.url; } })();
+          const kind: Endpoint["kind"] = ep.via === "WebSocket" || /^wss?:/i.test(ep.url) ? "websocket" : ep.via === "EventSource" ? "sse" : /graphql/i.test(ep.url) ? "graphql" : "rest";
+          const key = `${ep.method ?? ""} ${abs}`;
+          if (!endpoints.has(key)) endpoints.set(key, { url: abs, method: ep.method, kind, foundIn: `${x.url} (deobfuscated)`, evidence: addEv({ kind: "reconstructed", method: `${x.out.tool}+acorn-ast`, source: x.url, confidence: 0.6, summary: `${kind} endpoint ${abs} found only after deobfuscation` }) });
+        }
+      }
+      say("info", `Deobfuscation: ${r.stats.ok}/${r.stats.candidates} candidate script(s) made readable`);
+    }
+    inv.files = [...files, ...reconFiles];
     inv.endpoints = [...endpoints.values()];
 
     const facts: Facts = {
       pages, extracted, responseHeaders: headersByUrl, cookies, assets: [...assets.values()], assetBytes, technologies: inv.technologies,
       endpoints: inv.endpoints, js: jsFacts, css: cssText, files, sourceMaps, manifests, serviceWorkers: [...serviceWorkers], secretLikeInAssets: secretLike,
-      robots: robotsInfo, sitemapUrls, blockedByRobots, failedFetches: failed, rendered,
+      robots: robotsInfo, sitemapUrls, blockedByRobots, failedFetches: failed, rendered, deobfuscation: deobf,
       limits: { maxPagesHit, maxDepthHit, assetsOverLimit, queueRemaining: queue.length },
     };
     // recovered source → first-class source analysis (components, imports, env names, deps)

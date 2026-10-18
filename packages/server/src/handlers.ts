@@ -3,7 +3,7 @@
  * functions back the Vercel functions (hosted, strict) and the desktop
  * sidecar (local, privileged).
  */
-import { analyzeSnapshot, assessRip, detectLicense, fetchRepoSnapshot, investigate, parseRepoRef, RepoRefError, effective, validateUrl, BlockedUrlError, type CrawlConfig, type FetchRepoOptions, type Investigation, type Renderer } from "@omniforge/core";
+import { analyzeSnapshot, assessRip, detectLicense, fetchRepoSnapshot, investigate, parseRepoRef, RepoRefError, effective, validateUrl, BlockedUrlError, type CrawlConfig, type FetchRepoOptions, type Investigation, type Renderer, type Deobfuscator } from "@omniforge/core";
 import { HttpError, bytesToB64, err, json, readJson, sse } from "./http.js";
 import { nodeNet } from "./net.js";
 
@@ -13,6 +13,8 @@ export interface HandlerOptions {
   /** Max wall-clock for one analysis (hosted functions have a hard ceiling). */
   maxDurationMs?: number;
   renderer?: Renderer;
+  /** Sandboxed deobfuscation engine (local mode only; used when the request's config turns it on). */
+  deobfuscator?: Deobfuscator;
   /** Test hooks. */
   repoFetch?: Partial<FetchRepoOptions>;
   net?: ReturnType<typeof nodeNet>;
@@ -62,6 +64,7 @@ export async function analyzeHandler(req: Request, o: HandlerOptions): Promise<R
       const inv = await investigate({
         targets, name: body.name, config, fetch: net.fetch as never, dispatcher: net.dispatcher, resolver: net.resolver, allowPrivate: net.allowPrivate, signal: ctrl.signal,
         renderer: o.mode === "local" ? o.renderer : undefined,
+        deobfuscator: o.mode === "local" ? o.deobfuscator : undefined,
         onUpdate: (i: Investigation) => {
           const pages = i.pages.slice(sentPages).map((p) => ({ id: p.id, url: p.url, status: p.status, title: p.title, depth: p.depth, via: p.discoveredVia, from: p.discoveredFrom }));
           sentPages = i.pages.length;

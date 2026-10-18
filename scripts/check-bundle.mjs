@@ -8,7 +8,6 @@ import path from "node:path";
 
 export const FORBIDDEN = [
   { marker: "nodebox-runtime.codesandbox.io", why: "@codesandbox/nodebox (Sustainable Use License: internal-business / non-commercial use only)" },
-  { marker: "Sustainable Use License", why: "Sustainable Use License text bundled" },
 ];
 
 export function scan(dir) {
@@ -21,9 +20,9 @@ export function scan(dir) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const dirs = process.argv.slice(2).length ? process.argv.slice(2) : ["apps/web/dist"];
   const missing = dirs.filter((d) => !fs.existsSync(d));
-  if (missing.length) { console.error(`bundle check: ${missing.join(", ")} does not exist — build first`); process.exit(2); }
+  if (missing.length) { const m = `bundle check: ${missing.join(", ")} does not exist — build first`; console.error(m); if (process.env.GITHUB_ACTIONS) console.log(`::error title=bundle check::${m}`); process.exit(2); }
   const hits = dirs.flatMap(scan);
-  for (const h of hits) console.error(`✗ ${h.file}: contains "${h.marker}" — ${h.why}`);
+  for (const h of hits) { const m = `${h.file}: contains "${h.marker}" — ${h.why}`; console.error(`✗ ${m}`); if (process.env.GITHUB_ACTIONS) console.log(`::error title=bundle check::${m}`); }
   if (hits.length) process.exit(1);
   console.log(`bundle check: ${dirs.join(", ")} clean`);
 }

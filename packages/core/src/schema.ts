@@ -208,6 +208,7 @@ export interface CrawlConfig {
   fetchAssets: boolean;
   followSitemaps: boolean;
   render: boolean; // headless rendering (local worker / desktop only)
+  deobfuscate: boolean; // unminify / deobfuscate / split bundles in a sandbox (local worker / desktop only)
   userAgent: string;
   allowedHosts: string[];
 }
@@ -225,6 +226,7 @@ export const DEFAULT_CRAWL: CrawlConfig = {
   fetchAssets: true,
   followSitemaps: true,
   render: false,
+  deobfuscate: false,
   userAgent: "OmniForgeRE/1.0 (+https://github.com/CartyChris/omniforge-re; analysis crawler)",
   allowedHosts: [],
 };

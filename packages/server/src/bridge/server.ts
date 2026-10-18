@@ -21,6 +21,7 @@ import { inspectPath } from "./package.js";
 import { applyReaInstall, planReaInstall, ReaJobs, REA_OPS, reaStatus, reaSummary, reaToInvestigation } from "./rea.js";
 import { findChrome, PlaywrightRenderer } from "./render.js";
 import { verifyUrls } from "./verify.js";
+import type { Deobfuscator } from "@omniforge/core";
 
 export interface BridgeOptions { port?: number; uiToken?: string; version?: string; allowedOrigins?: string[]; jobsDir?: string; reaDir?: string }
 export interface Bridge { url: string; port: number; auth: BridgeAuth; roots: Roots; jobs: JobManager; close(): Promise<void> }
@@ -33,6 +34,9 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
   const rea = new ReaJobs(jobs, o.reaDir);
   let renderer: PlaywrightRenderer | null = null;
   const getRenderer = () => (renderer ??= new PlaywrightRenderer({ allowPrivate: true }));
+  // webcrack + the QuickJS sandbox are loaded only when a deobfuscation is first requested
+  let deob: Deobfuscator | null = null;
+  const getDeobfuscator = (): Deobfuscator => (deob ??= { deobfuscate: async (code, run) => (await import("../deobfuscate.js")).createDeobfuscator().deobfuscate(code, run) });
   let auth!: BridgeAuth;
   let cache: { at: number; data: unknown } | null = null;
   let rejectLogged = 0;
@@ -184,7 +188,7 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
       const body = await req.clone().json().catch(() => ({}));
       const wantsRender = !!body?.config?.render;
       if (wantsRender) need(p, "render");
-      return analyzeHandler(req, { mode: "local", renderer: wantsRender ? getRenderer() : undefined });
+      return analyzeHandler(req, { mode: "local", renderer: wantsRender ? getRenderer() : undefined, deobfuscator: body?.config?.deobfuscate ? getDeobfuscator() : undefined });
     }
     if (is("GET", "/bridge/changes")) { ui(); return json({ changes: readChanges(), backups: listBackups() }); }
     if (is("POST", "/bridge/restore")) { ui(); const b = await readJson(req, 2000); return json({ restored: restoreBackup(String(b.dir)) }); }

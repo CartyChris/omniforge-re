@@ -193,6 +193,34 @@ describe("privileged capabilities through the bridge (desktop UI token)", () => 
     expect(other.json.report.discrepancies.length).toBeGreaterThan(0);
   }, 120_000);
 
+  it("deobfuscates an obfuscator.io script during a local analysis: readable reconstructed file, an endpoint only visible afterwards, honest coverage", async () => {
+    const OBF = fs.readFileSync(path.join(__dirname, "fixtures/js/obfuscatorio.js"), "utf8");
+    const srv = http.createServer((q, r) => {
+      if (q.url === "/") { r.writeHead(200, { "content-type": "text/html" }); return r.end('<!doctype html><title>obf</title><h1>Shop</h1><script src="/static/app.js"></script>'); }
+      if (q.url === "/static/app.js") { r.writeHead(200, { "content-type": "application/javascript" }); return r.end(OBF); }
+      r.writeHead(404); r.end();
+    });
+    await new Promise<void>((res) => srv.listen(0, "127.0.0.1", res));
+    const base = `http://127.0.0.1:${(srv.address() as { port: number }).port}`;
+    try {
+      const run = async (deobfuscate: boolean) => {
+        const r = await call("POST", "/bridge/analyze", { token: bridge.auth.uiToken, origin: "tauri://localhost", body: { targets: [base + "/"], config: { delayMs: 0, deobfuscate } } });
+        expect(r.status).toBe(200);
+        return JSON.parse(r.text.split("\n\n").find((b) => b.startsWith("event: done"))!.split("\ndata: ")[1]!);
+      };
+      const off = await run(false);
+      expect(off.endpoints.some((e: any) => e.url.includes("/api/checkout"))).toBe(false); // hidden in the string array
+      expect(off.files).toEqual([]);
+      const on = await run(true);
+      expect(on.endpoints.some((e: any) => e.url === base + "/api/checkout" && /deobfuscated/.test(e.foundIn))).toBe(true);
+      const f = on.files.find((x: any) => x.path.startsWith("reconstructed/"));
+      expect(f).toMatchObject({ provenance: "reconstructed", language: "JavaScript" });
+      expect(f.content).toContain("/api/v2/users?limit=50");
+      expect(on.files.some((x: any) => x.provenance === "recovered")).toBe(false);
+      expect(on.coverage.checks.find((c: any) => c.id === "deobfuscation")).toMatchObject({ status: "done" });
+    } finally { srv.close(); }
+  }, 120_000);
+
   it("detects the REAL Claude Code CLI and lists it as usable (skipped if not installed)", async () => {
     const r = await ui("GET", "/bridge/cli");
     const claude = r.json.find((c: any) => c.id === "claude-code");
