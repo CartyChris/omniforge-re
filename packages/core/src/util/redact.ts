@@ -42,6 +42,27 @@ export function redactSecrets(text: string): { text: string; found: string[] } {
   return { text: out, found };
 }
 
+const CONFIG_FILE = /(?:^|\/)(?:\.env(?:\.[\w.-]+)?|[^/]+\.(?:env|ini|cfg|conf|properties|toml|ya?ml|json|xml|plist))$/i;
+
+/**
+ * Redaction for CONTENT THAT WE STORE (investigation files, recovered sources, exports). Unlike redactSecrets() this leaves
+ * ordinary code alone: the loose "NAME = value" rule only applies to configuration files, where values are literals,
+ * so `const API_KEY = process.env.API_KEY` in source is never rewritten.
+ */
+export function redactForStorage(path: string, text: string): { text: string; kinds: string[] } {
+  const kinds: string[] = []; let out = text;
+  for (const rule of RULES) {
+    if (rule.name === "assignment" && !CONFIG_FILE.test(path)) continue;
+    out = out.replace(rule.re, (...m: string[]) => {
+      kinds.push(rule.name);
+      if (rule.name === "assignment") return `${m[1]}=[REDACTED]`;
+      if (rule.name === "url-credentials") return `${m[1]}[REDACTED]@`;
+      return `[REDACTED:${rule.name}]`;
+    });
+  }
+  return { text: out, kinds: [...new Set(kinds)] };
+}
+
 export function findSecretLikeValues(text: string): string[] {
   return [...new Set(redactSecrets(text).found)];
 }

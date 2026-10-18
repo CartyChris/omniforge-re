@@ -4,7 +4,9 @@ name: Desktop (macOS)
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     tags: ["v*"]
+    paths: ["apps/desktop/**", "packages/server/**", "apps/web/**", ".github/workflows/desktop.yml"]
   pull_request:
     paths: ["apps/desktop/**", "packages/server/**", "apps/web/**", ".github/workflows/desktop.yml"]
 permissions: { contents: write }

@@ -7,7 +7,7 @@
  */
 import { isTauri, type Bridge } from "./bridge";
 
-const DIRECT_OK = new Set(["api.anthropic.com", "api.openai.com", "openrouter.ai", "generativelanguage.googleapis.com", "api.mistral.ai", "api.groq.com", "api.together.xyz", "api.deepseek.com", "api.github.com"]);
+const DIRECT_OK = new Set(["api.osv.dev", "api.anthropic.com", "api.openai.com", "openrouter.ai", "generativelanguage.googleapis.com", "api.mistral.ai", "api.groq.com", "api.together.xyz", "api.deepseek.com", "api.github.com"]);
 const FORWARDABLE = new Set(["api.x.ai", "api.moonshot.ai", "api.moonshot.cn", "api.vercel.com", ...DIRECT_OK]);
 const isLocal = (h: string) => h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h === "::1";
 

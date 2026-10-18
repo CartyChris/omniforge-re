@@ -7,7 +7,8 @@
  * on Vercel, and in the desktop app (which feeds it files from disk).
  */
 import type { Dependency, Graph, SourceFile } from "../schema.js";
-import { dotenvNames, envVarNames, findSecretLikeValues } from "../util/redact.js";
+import { dotenvNames, envVarNames, findSecretLikeValues, redactForStorage } from "../util/redact.js";
+import { detectArtifact } from "./artifacts.js";
 import { sha256 } from "../util/index.js";
 import { analyzeJs } from "./js.js";
 import { parseLockfile, parseManifest, type ManifestResult } from "./deps.js";
@@ -275,6 +276,9 @@ export async function analyzeSourceTree(inputs: InputFile[], opts: { includeCont
     agg.bytes += f.data.byteLength;
     langAgg.set(language, agg);
 
+    // Stored copies never contain secret values; HAR captures (cookies, tokens, bodies) are not stored at all.
+    const isHar = detectArtifact(f.path, text) === "har";
+    const stored = isHar ? null : redactForStorage(f.path, text);
     files.push({
       path: f.path,
       language,
@@ -283,7 +287,8 @@ export async function analyzeSourceTree(inputs: InputFile[], opts: { includeCont
       hash: await sha256(f.data),
       provenance: f.provenance ?? "user",
       origin: f.origin ?? "upload",
-      content: includeContent ? text : undefined,
+      content: includeContent && stored ? stored.text : undefined,
+      ...(isHar ? { redacted: ["har-capture-not-stored"] } : stored && stored.kinds.length ? { redacted: stored.kinds } : {}),
     });
     addNode(`file:${f.path}`, "file", f.path.split("/").pop()!, { path: f.path, language });
 

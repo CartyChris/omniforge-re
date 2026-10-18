@@ -35,4 +35,6 @@ export * from "./repo/license.js";
 export * from "./repo/rip.js";
 export * as github from "./integrations/github.js";
 export * as vercel from "./integrations/vercel.js";
+export * from "./integrations/osv.js";
 export * from "./analyze/sourceInvestigation.js";
+export * from "./analyze/artifacts.js";

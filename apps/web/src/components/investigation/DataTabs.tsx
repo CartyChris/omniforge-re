@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
-import { BookmarkPlus, BookmarkCheck, ChevronRight, Copy, FileCode2, Hammer, Search } from "lucide-react";
+import { BookmarkPlus, BookmarkCheck, ChevronRight, Copy, FileCode2, Hammer, Search, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import type { Feature, Investigation, Page, SourceFile } from "@omniforge/core";
 import { useApp } from "@/lib/store";
-import { cn, fmtBytes, fmtNum, pathOf } from "@/lib/utils";
+import { ago, cn, fmtBytes, fmtNum, pathOf } from "@/lib/utils";
+import { runVulnerabilityCheck } from "@/lib/vuln";
 import { Badge, Button, Card, CardBody, CardHeader, CardTitle, EmptyState, Input, Segmented } from "@/components/ui/primitives";
 import { Dialog, DialogContent } from "@/components/ui/overlay";
 import { ConfidenceBar, KindBadge } from "@/components/domain/bits";
@@ -122,8 +123,8 @@ export function FilesTab({ inv }: { inv: Investigation }) {
       <div className="grid gap-3 lg:grid-cols-[minmax(0,22rem)_1fr]">
         <Card className="max-h-[65dvh] overflow-auto"><ul className="divide-y divide-line">{rows.slice(0, n).map((f) => <li key={f.path}><button onClick={() => setSel(f)} className={cn("flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] transition hover:bg-elevated", sel?.path === f.path && "bg-accent-soft")}><FileCode2 className="size-4 shrink-0 text-muted" /><span className="min-w-0 flex-1 truncate font-mono text-xs" title={f.path}>{f.path}</span><Badge tone={PROV[f.provenance]}>{f.provenance}</Badge></button></li>)}</ul><More n={n} total={rows.length} onMore={() => setN(n + 150)} /></Card>
         <Card className="min-h-64 overflow-hidden">{!sel ? <EmptyState title="Select a file" body="Recovered files are exact originals from public source maps; reconstructed files are rebuilt and may differ from the author's source." /> : <>
-          <CardHeader><div className="min-w-0"><div className="truncate font-mono text-xs">{sel.path}</div><div className="mt-1 flex flex-wrap gap-2 text-xs text-muted"><Badge tone={PROV[sel.provenance]}>{sel.provenance}</Badge><span>{sel.language}</span><span>{fmtNum(sel.lines)} lines</span><span>{fmtBytes(sel.bytes)}</span></div></div>{sel.content !== undefined && <Button size="xs" variant="ghost" icon={<Copy className="size-3.5" />} onClick={() => navigator.clipboard?.writeText(sel.content!).then(() => toast.success("Copied"))}>Copy</Button>}</CardHeader>
-          {sel.content === undefined ? <p className="p-4 text-[13px] text-muted">Content isn't stored (binary or very large). SHA-256 {sel.hash}</p> : <pre className="max-h-[60dvh] overflow-auto p-4 font-mono text-xs leading-relaxed"><code>{sel.content.length > 200_000 ? sel.content.slice(0, 200_000) + "\n… (preview truncated; copy to workspace for the full file)" : sel.content}</code></pre>}
+          <CardHeader><div className="min-w-0"><div className="truncate font-mono text-xs">{sel.path}</div><div className="mt-1 flex flex-wrap gap-2 text-xs text-muted"><Badge tone={PROV[sel.provenance]}>{sel.provenance}</Badge>{sel.redacted?.length ? <Badge tone="warn" title="Secret-shaped values are never stored">{sel.redacted[0] === "har-capture-not-stored" ? "capture not stored" : `redacted: ${sel.redacted.join(", ")}`}</Badge> : null}<span>{sel.language}</span><span>{fmtNum(sel.lines)} lines</span><span>{fmtBytes(sel.bytes)}</span></div></div>{sel.content !== undefined && <Button size="xs" variant="ghost" icon={<Copy className="size-3.5" />} onClick={() => navigator.clipboard?.writeText(sel.content!).then(() => toast.success("Copied"))}>Copy</Button>}</CardHeader>
+          {sel.content === undefined ? <p className="p-4 text-[13px] text-muted">{sel.redacted?.[0] === "har-capture-not-stored" ? "HAR captures contain cookies, tokens and bodies, so the file is analysed but never stored. " : "Content isn't stored (binary or very large). "}SHA-256 {sel.hash}</p> : <pre className="max-h-[60dvh] overflow-auto p-4 font-mono text-xs leading-relaxed"><code>{sel.content.length > 200_000 ? sel.content.slice(0, 200_000) + "\n… (preview truncated; copy to workspace for the full file)" : sel.content}</code></pre>}
           <div className="border-t border-line px-4 py-2 text-[11px] text-faint">Origin: {sel.origin}</div></>}</Card>
       </div>
     </div>
@@ -132,14 +133,23 @@ export function FilesTab({ inv }: { inv: Investigation }) {
 
 /* ------------------------------ Dependencies ------------------------------ */
 export function DepsTab({ inv }: { inv: Investigation }) {
-  const [q, setQ] = useState(""); const [eco, setEco] = useState("all"); const [n, setN] = useState(150);
+  const { saveInvestigation, settings } = useApp();
+  const [q, setQ] = useState(""); const [eco, setEco] = useState("all"); const [n, setN] = useState(150); const [busy, setBusy] = useState(false);
   const ecos = [...new Set(inv.dependencies.map((d) => d.ecosystem))];
+  const vuln = useMemo(() => new Map((inv.vulnerabilities?.items ?? []).map((v) => [`${v.ecosystem}:${v.package}@${v.version}`, v])), [inv.vulnerabilities]);
   const rows = inv.dependencies.filter((d) => (eco === "all" || d.ecosystem === eco) && (!q || d.name.toLowerCase().includes(q.toLowerCase())));
+  const check = async () => { setBusy(true); try { const next = await runVulnerabilityCheck(inv); saveInvestigation(next); const c = next.vulnerabilities!; toast[c.items.length ? "warning" : "success"](c.items.length ? `${c.items.length} vulnerable dependenc${c.items.length === 1 ? "y" : "ies"} found` : `No known vulnerabilities in ${c.checked} checked dependencies`); } catch (e) { toast.error((e as Error).message); } finally { setBusy(false); } };
   if (!inv.dependencies.length) return <EmptyState title="No dependencies recorded" body="Manifests and lockfiles weren't available. For websites, only CDN-hosted libraries with versions in their URLs are listed." />;
+  const v = inv.vulnerabilities;
   return (
     <div className="space-y-3">
+      <Card className="flex flex-wrap items-center gap-3 p-3">
+        <ShieldAlert className={cn("size-5", v ? (v.items.length ? "text-bad" : "text-ok") : "text-muted")} />
+        <div className="min-w-0 flex-1 text-[13px]">{v ? <><span className="font-medium">{v.items.length ? `${v.items.length} vulnerable` : "No known vulnerabilities"}</span> <span className="text-muted">— {v.checked} exact-version dependencies checked against OSV.dev {ago(v.checkedAt)}{v.skipped ? `; ${v.skipped} with version ranges skipped (a range doesn't say what's installed)` : ""}.</span></> : <span className="text-muted">Check exact-version dependencies against the OSV.dev vulnerability database. This sends package names and versions to api.osv.dev, so it only runs when you ask.</span>}</div>
+        <Button size="sm" variant={v ? "secondary" : "primary"} loading={busy} disabled={settings.localOnly} title={settings.localOnly ? "Disabled in local-only mode" : undefined} onClick={check}>{v ? "Re-check" : "Check vulnerabilities"}</Button>
+      </Card>
       <div className="flex flex-wrap items-center justify-between gap-3"><Filter value={q} onChange={setQ} placeholder="Filter dependencies…" /><Segmented size="sm" value={eco} onChange={setEco} options={[{ value: "all", label: `All ${inv.dependencies.length}` }, ...ecos.map((e) => ({ value: e, label: e }))]} className="max-w-full overflow-x-auto" /></div>
-      <Card className="overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-[13px]"><thead className="border-b border-line text-left text-xs text-faint"><tr><th className="px-4 py-2 font-medium">Package</th><th className="px-2 py-2 font-medium">Version</th><th className="px-2 py-2 font-medium">Ecosystem</th><th className="hidden px-2 py-2 font-medium md:table-cell">Declared in</th></tr></thead><tbody className="divide-y divide-line">{rows.slice(0, n).map((d, i) => <tr key={i}><td className="px-4 py-1.5 font-mono text-xs">{d.name}{d.dev && <Badge className="ml-2">dev</Badge>}</td><td className="px-2 py-1.5 font-mono text-xs text-muted">{d.version ?? "—"}</td><td className="px-2 py-1.5"><Badge>{d.ecosystem}</Badge></td><td className="hidden max-w-[16rem] truncate px-2 py-1.5 text-xs text-faint md:table-cell">{d.source}</td></tr>)}</tbody></table></div><More n={n} total={rows.length} onMore={() => setN(n + 150)} /></Card>
+      <Card className="overflow-hidden"><div className="overflow-x-auto"><table className="w-full text-[13px]"><thead className="border-b border-line text-left text-xs text-faint"><tr><th className="px-4 py-2 font-medium">Package</th><th className="px-2 py-2 font-medium">Version</th><th className="px-2 py-2 font-medium">Ecosystem</th><th className="hidden px-2 py-2 font-medium md:table-cell">Declared in</th><th className="px-2 py-2 font-medium">Security</th></tr></thead><tbody className="divide-y divide-line">{rows.slice(0, n).map((d, i) => { const x = vuln.get(`${d.ecosystem}:${d.name}@${d.version}`); return <tr key={i}><td className="px-4 py-1.5 font-mono text-xs">{d.name}{d.dev && <Badge className="ml-2">dev</Badge>}</td><td className="px-2 py-1.5 font-mono text-xs text-muted">{d.version ?? "—"}</td><td className="px-2 py-1.5"><Badge>{d.ecosystem}</Badge></td><td className="hidden max-w-[16rem] truncate px-2 py-1.5 text-xs text-faint md:table-cell">{d.source}</td><td className="px-2 py-1.5">{x ? <Badge tone={x.severity === "critical" || x.severity === "high" ? "bad" : "warn"} title={`${x.summary} (${x.ids.join(", ")})${x.fixed?.length ? ` — fixed in ${x.fixed.join(", ")}` : ""}`}>{x.severity} · {x.ids[0]}</Badge> : <span className="text-xs text-faint">{v ? "—" : ""}</span>}</td></tr>; })}</tbody></table></div><More n={n} total={rows.length} onMore={() => setN(n + 150)} /></Card>
     </div>
   );
 }

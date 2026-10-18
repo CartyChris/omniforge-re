@@ -5,6 +5,7 @@
  */
 import type { SourceFile } from "../schema.js";
 import { sha256 } from "../util/index.js";
+import { redactForStorage } from "../util/redact.js";
 import { safeEntryPath } from "./archive.js";
 
 export interface RawSourceMap {
@@ -115,6 +116,8 @@ export async function parseSourceMap(json: string, origin: string): Promise<Sour
       seen.add(path);
       recovered++;
       const truncated = content.length > MAX_RECOVERED_BYTES;
+      const shown = truncated ? content.slice(0, MAX_RECOVERED_BYTES) : content;
+      const stored = redactForStorage(path, shown); // exact original, except that secret values are never retained
       files.push({
         path,
         language: langFor(path),
@@ -123,8 +126,9 @@ export async function parseSourceMap(json: string, origin: string): Promise<Sour
         hash: await sha256(content),
         provenance: "recovered",
         origin: `${origin} [sourcesContent #${i}]`,
-        content: truncated ? content.slice(0, MAX_RECOVERED_BYTES) : content,
+        content: stored.text,
         truncated,
+        ...(stored.kinds.length ? { redacted: stored.kinds } : {}),
       });
     }
   }

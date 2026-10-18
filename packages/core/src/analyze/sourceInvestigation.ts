@@ -8,6 +8,7 @@ import type { Evidence, Feature, Finding, Investigation, Technology } from "../s
 import { hashStr, now, uid } from "../util/index.js";
 import { analyzeSourceTree, type InputFile, type SourceTreeAnalysis } from "./source.js";
 import { fingerprint, mergeTechnologies } from "./fingerprint.js";
+import { analyzeTechnicalArtifacts } from "./artifacts.js";
 
 const DEP_TECH: Record<string, { name: string; category: string }> = {
   react: { name: "React", category: "JavaScript framework" }, next: { name: "Next.js", category: "Web framework" }, vue: { name: "Vue.js", category: "JavaScript framework" },
@@ -83,8 +84,12 @@ export async function investigateSource(name: string, inputs: InputFile[], o: { 
   if (has("cmdk")) addFeature("Command palette", "Interaction", "cmdk dependency", grep(/command|palette/i), [seen.get("cmdk")!.evidence[0]!], "Keyboard-driven commands.");
   if (tree.components.length >= 5) addFeature("Component library", "UI", `${tree.components.length} components`, [...new Set(tree.components.map((c) => c.file))], [ev({ kind: "observed", method: "source-scan", source: tree.components[0]!.file, confidence: 0.85, summary: `Components: ${tree.components.slice(0, 12).map((c) => c.name).join(", ")}` })], "Reusable UI building blocks.");
 
+  // user-supplied technical artifacts (OpenAPI / GraphQL / HAR / SBOM / logs)
+  const art = analyzeTechnicalArtifacts(inputs);
+  evidence.push(...art.evidence); features.push(...art.features);
+
   // findings
-  const findings: Finding[] = [];
+  const findings: Finding[] = [...art.findings];
   const fnd = (area: Finding["area"], severity: Finding["severity"], title: string, detail: string, source: string) => findings.push({ id: uid("fd"), area, severity, title, detail, evidence: [ev({ kind: "observed", method: "file-scan", source, confidence: 1, summary: title })] });
   for (const s of tree.secretFiles) fnd("security", "high", `Secret-shaped value in ${s.path}`, `${s.kinds.join(", ")} pattern. The value is NOT stored; verify and rotate if live.`, s.path);
   if (!tree.files.some((f) => /^(?:LICEN[CS]E|COPYING)/i.test(f.path))) fnd("quality", "info", "No LICENSE file", "Without a licence, others have no right to reuse this code.", "source tree");
@@ -97,6 +102,7 @@ export async function investigateSource(name: string, inputs: InputFile[], o: { 
     { id: "manifests", label: "Manifests and lockfiles parsed", status: tree.manifests.length ? "done" : "partial", detail: `${tree.manifests.length} manifest(s), ${tree.dependencies.length} dependencies` },
     { id: "imports", label: "Import graph built", status: tree.graph.edges.length ? "done" : "partial", detail: `${tree.graph.edges.length} import edge(s)` },
     { id: "secrets", label: "Secret scan (names only)", status: "done", detail: `${tree.secretFiles.length} file(s) flagged` },
+    ...(art.found.length ? [{ id: "artifacts", label: "Technical artifacts parsed", status: (art.notes.length ? "partial" : "done") as "done" | "partial", detail: art.found.map((a) => `${a.kind} ${a.path} (${a.detail})`).join("; ").slice(0, 300) }] : []),
     { id: "runtime", label: "Runtime behaviour observed", status: "skipped", detail: "Source was read, not executed. Behaviour specs list unobserved states as Unknown." },
     { id: "server", label: "Server-side logic", status: tree.files.length ? "partial" : "unavailable", detail: tree.files.length ? "Read from source where present in this tree" : "No source provided" },
   ];
@@ -106,10 +112,10 @@ export async function investigateSource(name: string, inputs: InputFile[], o: { 
   const files = tree.files.map((f) => ({ ...f, content: f.content }));
   const inv: Investigation = {
     id: uid("inv"), name, targets: [{ id: uid("tg"), kind: o.kind ?? "files", value: o.origin ?? name, addedAt: startedAt }], config: { ...DEFAULT_CRAWL, mode: "single", fetchAssets: false }, status: "done",
-    startedAt, finishedAt: now(), progress: 1, pages: [], assets: [], technologies: mergeTechnologies([techs, fp.technologies]), files, dependencies: tree.dependencies, endpoints: tree.endpoints.map((e) => ({ url: e.url, method: e.method, kind: /graphql/i.test(e.url) ? "graphql" : /^wss?:/.test(e.url) ? "websocket" : "rest", foundIn: e.file, evidence: "" })),
+    startedAt, finishedAt: now(), progress: 1, pages: [], assets: [], technologies: mergeTechnologies([techs, fp.technologies, art.technologies]), files, dependencies: [...tree.dependencies, ...art.dependencies], endpoints: [...art.endpoints, ...tree.endpoints].map((e) => ("foundIn" in e ? e : { url: e.url, method: e.method, kind: /graphql/i.test(e.url) ? "graphql" as const : /^wss?:/.test(e.url) ? "websocket" as const : "rest" as const, foundIn: e.file, evidence: "" })),
     features, findings, evidence, graph: tree.graph, coverage: { score: Math.round(score * 100) / 100, checks },
-    limitations: [...checks.filter((c) => c.status === "skipped" || c.status === "unavailable").map((c) => `${c.label}: ${c.detail}`), ...(tree.binaries.length ? [`${tree.binaries.length} binary file(s) were inventoried but not decompiled; use the desktop app's REA integration for binaries.`] : [])],
-    questions: tree.envVars.length ? ["Which environment variables are required at runtime? Names found: " + tree.envVars.slice(0, 12).map((e) => e.name).join(", ")] : [],
+    limitations: [...art.notes, ...checks.filter((c) => c.status === "skipped" || c.status === "unavailable").map((c) => `${c.label}: ${c.detail}`), ...(tree.binaries.length ? [`${tree.binaries.length} binary file(s) were inventoried but not decompiled; use the desktop app's REA integration for binaries.`] : [])],
+    thirdParties: art.thirdParties.length ? art.thirdParties : undefined, questions: tree.envVars.length ? ["Which environment variables are required at runtime? Names found: " + tree.envVars.slice(0, 12).map((e) => e.name).join(", ")] : [],
     log: [{ t: now(), level: "info", msg: `Analysed ${tree.files.length} file(s): ${tree.languages.slice(0, 3).map((l) => `${l.language} ${l.lines}L`).join(", ")}` }],
     components: tree.components.map((c) => ({ name: c.name, source: c.file, provenance: "recovered" as const })),
     routes: tree.routes.map((r) => ({ route: r.route, source: r.file, via: "file-system" as const })), envVars: tree.envVars,

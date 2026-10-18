@@ -101,6 +101,8 @@ export interface SourceFile {
   origin: string;
   content?: string; // omitted for binaries and very large files
   truncated?: boolean;
+  /** Secret-shaped values were replaced in `content` (kinds), or the content was withheld entirely (e.g. HAR captures). */
+  redacted?: string[];
 }
 
 export interface Dependency {
@@ -278,6 +280,19 @@ export interface Investigation {
   thirdParties?: { host: string; kinds: string[]; count: number }[];
   envVars?: { name: string; files: string[] }[];
   summary?: string; // optional AI-written overview (labelled as such in UI)
+  /** Result of an explicit OSV.dev check of exact-version dependencies (see integrations/osv.ts). */
+  vulnerabilities?: { checkedAt: string; checked: number; skipped: number; items: Vulnerability[] };
+}
+
+export interface Vulnerability {
+  package: string;
+  version: string;
+  ecosystem: Dependency["ecosystem"];
+  ids: string[]; // GHSA-…, CVE-…, PYSEC-… (deduplicated)
+  severity: "critical" | "high" | "medium" | "low" | "unknown";
+  summary: string;
+  fixed?: string[]; // versions that fix it, when OSV reports them
+  source: string; // manifest/lockfile that declared the dependency
 }
 
 export interface ChatMessage {

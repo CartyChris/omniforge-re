@@ -139,7 +139,7 @@ export async function repoFilesHandler(req: Request, o: HandlerOptions): Promise
 /** Hosts the hosted forwarder may reach (APIs that do not allow browser CORS). */
 export const FORWARD_ALLOW = new Set([
   "api.anthropic.com", "api.openai.com", "generativelanguage.googleapis.com", "api.x.ai", "api.moonshot.ai", "api.moonshot.cn", "openrouter.ai",
-  "api.vercel.com", "api.github.com", "api.mistral.ai", "api.groq.com", "api.together.xyz", "api.deepseek.com",
+  "api.vercel.com", "api.github.com", "api.osv.dev", "api.mistral.ai", "api.groq.com", "api.together.xyz", "api.deepseek.com",
 ]);
 const FORWARD_HEADERS = ["authorization", "x-api-key", "anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access", "content-type", "accept", "x-goog-api-key", "openai-organization", "http-referer", "x-title", "x-github-api-version"];
 
