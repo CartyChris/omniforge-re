@@ -3,6 +3,7 @@
  * credentials; we never surface their values — only that something
  * secret-shaped exists and where.
  */
+import { redactLeaks } from "./gitleaks";
 
 interface SecretRule {
   name: string;
@@ -39,7 +40,9 @@ export function redactSecrets(text: string): { text: string; found: string[] } {
       return `[REDACTED:${rule.name}]`;
     });
   }
-  return { text: out, found };
+  const gl = redactLeaks(out); // gitleaks' 221 provider formats, after our own rules
+  for (const r of gl.rules) found.push(`gitleaks:${r}`);
+  return { text: gl.text, found };
 }
 
 const CONFIG_FILE = /(?:^|\/)(?:\.env(?:\.[\w.-]+)?|[^/]+\.(?:env|ini|cfg|conf|properties|toml|ya?ml|json|xml|plist))$/i;
@@ -60,7 +63,9 @@ export function redactForStorage(path: string, text: string): { text: string; ki
       return `[REDACTED:${rule.name}]`;
     });
   }
-  return { text: out, kinds: [...new Set(kinds)] };
+  const gl = redactLeaks(out, { path });
+  for (const r of gl.rules) kinds.push(`gitleaks:${r}`);
+  return { text: gl.text, kinds: [...new Set(kinds)] };
 }
 
 export function findSecretLikeValues(text: string): string[] {

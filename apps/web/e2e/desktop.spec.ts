@@ -245,7 +245,7 @@ test("desktop UI: an MCP server's tools reach OmniForge's own Build agents — a
   await page.getByText(/\d+\/\d+ done/).waitFor({ timeout: 90_000 });
   await page.getByRole("button", { name: "Details" }).first().click();
   await expect(page.getByText(/tool mcp__mini__lookup\(\{\}\) → <<<UNTRUSTED_DATA label="mcp:mini\/lookup"/)).toBeVisible({ timeout: 60_000 });
-  await page.getByRole("button", { name: "Stop" }).click().catch(() => {});
+  await page.getByRole("button", { name: "Stop" }).click({ timeout: 2_000 }).catch(() => {}); // the run may already have finished
   // pinned: connecting again shows the tools as approved
   await page.goto("/#/studio?tab=skills");
   await page.getByTestId("mcp-agent-servers").locator("li", { hasText: "mini" }).getByRole("button", { name: "Connect" }).click();

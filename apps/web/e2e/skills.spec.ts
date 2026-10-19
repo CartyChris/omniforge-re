@@ -33,6 +33,6 @@ test("Agent Skills: built-ins listed, a zip skill imported, a skill disabled —
   await expect.poll(() => systems.find((s) => s.includes("SKILLS")) ?? "", { timeout: 60_000 }).toContain("- house-style: Our house style for React components.");
   const sys = systems.find((s) => s.includes("SKILLS"))!;
   expect(sys).toContain("- faithful-rebuild:"); expect(sys).not.toContain("- secure-defaults:"); expect(sys).not.toContain("Use named exports only."); // bodies load on demand
-  await page.getByRole("button", { name: "Stop" }).click().catch(() => {});
+  await page.getByRole("button", { name: "Stop" }).click({ timeout: 2_000 }).catch(() => {}); // the run may already have finished
   noErrors(errors);
 });
