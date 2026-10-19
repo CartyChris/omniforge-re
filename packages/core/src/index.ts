@@ -37,6 +37,8 @@ export * from "./repo/license.js";
 export * from "./repo/rip.js";
 export * as github from "./integrations/github.js";
 export * as vercel from "./integrations/vercel.js";
+export * as netlify from "./integrations/netlify.js";
+export * as cloudflare from "./integrations/cloudflare.js";
 export * from "./integrations/osv.js";
 export * from "./analyze/sourceInvestigation.js";
 export * from "./analyze/artifacts.js";

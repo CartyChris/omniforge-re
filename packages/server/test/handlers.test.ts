@@ -163,6 +163,20 @@ describe("forward handler (hosted allow-list)", () => {
     expect(seen).toEqual([]); // nothing was fetched
     expect(FORWARD_ALLOW.has("api.anthropic.com") && FORWARD_ALLOW.has("api.vercel.com") && FORWARD_ALLOW.has("api.github.com")).toBe(true);
   });
+  it("forwards binary bodies (bodyBase64) byte-for-byte to the Netlify / Cloudflare deploy APIs; bad base64 is refused", async () => {
+    const seen: any[] = [];
+    const zip = new Uint8Array([0x50, 0x4b, 3, 4, 0, 255, 128, 10, 13]);
+    const res = await forwardHandler(post("/api/forward", { url: "https://api.netlify.com/api/v1/sites/s1/deploys", method: "POST", headers: { authorization: "Bearer t", "content-type": "application/zip" }, bodyBase64: Buffer.from(zip).toString("base64") }), { mode: "hosted", net: stub(seen) });
+    expect(res.status).toBe(200);
+    expect(seen[0].init.headers).toEqual({ authorization: "Bearer t", "content-type": "application/zip" });
+    expect(Array.from(seen[0].init.body as Uint8Array)).toEqual(Array.from(zip));
+    expect(FORWARD_ALLOW.has("api.netlify.com") && FORWARD_ALLOW.has("api.cloudflare.com")).toBe(true);
+    const mp = "--B\r\nContent-Disposition: form-data; name=\"manifest\"\r\n\r\n{}\r\n--B--\r\n";
+    await forwardHandler(post("/api/forward", { url: "https://api.cloudflare.com/client/v4/accounts/a/pages/projects/p/deployments", method: "POST", headers: { "content-type": "multipart/form-data; boundary=B" }, body: mp }), { mode: "hosted", net: stub(seen) });
+    expect(seen[1].init).toMatchObject({ body: mp, headers: { "content-type": "multipart/form-data; boundary=B" } });
+    expect((await forwardHandler(post("/api/forward", { url: "https://api.netlify.com/x", method: "POST", bodyBase64: "not base64!" }), { mode: "hosted", net: stub(seen) })).status).toBe(400);
+    expect(seen).toHaveLength(2);
+  });
   it("does not follow upstream redirects and passes status codes through", async () => {
     expect((await forwardHandler(post("/api/forward", { url: "https://api.openai.com/v1/x" }), { mode: "hosted", net: stub([], 302, { location: "http://internal/" }) })).status).toBe(502);
     expect((await forwardHandler(post("/api/forward", { url: "https://api.openai.com/v1/x" }), { mode: "hosted", net: stub([], 429, { "retry-after": "7" }) })).headers.get("retry-after")).toBe("7");

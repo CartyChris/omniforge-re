@@ -148,12 +148,22 @@ export async function repoFilesHandler(req: Request, o: HandlerOptions): Promise
 export const FORWARD_ALLOW = new Set([
   "api.anthropic.com", "api.openai.com", "generativelanguage.googleapis.com", "api.x.ai", "api.moonshot.ai", "api.moonshot.cn", "openrouter.ai",
   "api.vercel.com", "api.github.com", "api.osv.dev", "api.mistral.ai", "api.groq.com", "api.together.xyz", "api.deepseek.com",
+  "api.netlify.com", "api.cloudflare.com", // static-site deploy targets (Netlify ZIP deploys, Cloudflare Pages Direct Upload)
 ]);
+
+/** A forwarded body is text (`body`) or bytes (`bodyBase64`, e.g. a Netlify ZIP). */
+export function forwardedBody(b: { body?: unknown; bodyBase64?: unknown }): string | Uint8Array<ArrayBuffer> | undefined {
+  if (typeof b.bodyBase64 === "string") {
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(b.bodyBase64)) throw new HttpError(400, "bodyBase64 is not valid base64");
+    return new Uint8Array(Buffer.from(b.bodyBase64, "base64"));
+  }
+  return typeof b.body === "string" ? b.body : undefined;
+}
 const FORWARD_HEADERS = ["authorization", "x-api-key", "anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access", "content-type", "accept", "x-goog-api-key", "openai-organization", "http-referer", "x-title", "x-github-api-version"];
 
 export async function forwardHandler(req: Request, o: HandlerOptions & { extraHosts?: string[] }): Promise<Response> {
   if (req.method !== "POST") return err("Use POST", 405);
-  let body: { url?: string; method?: string; headers?: Record<string, string>; body?: string | null };
+  let body: { url?: string; method?: string; headers?: Record<string, string>; body?: string | null; bodyBase64?: string };
   try { body = await readJson(req, 30_000_000); } catch (e) { return err((e as Error).message, (e as HttpError).status ?? 400); }
   let url: URL;
   try { url = validateUrl(String(body.url ?? "")); } catch (e) { return err((e as Error).message, 400); }
@@ -164,10 +174,12 @@ export async function forwardHandler(req: Request, o: HandlerOptions & { extraHo
   for (const [k, v] of Object.entries(body.headers ?? {})) if (FORWARD_HEADERS.includes(k.toLowerCase())) headers[k.toLowerCase()] = String(v);
   const method = (body.method ?? "GET").toUpperCase();
   if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method)) return err("Unsupported method");
+  let payload: string | Uint8Array<ArrayBuffer> | undefined;
+  try { payload = forwardedBody(body); } catch (e) { return err((e as Error).message, 400); }
   const net = o.net ?? nodeNet({ allowPrivate: false });
   let upstream: Response;
   try {
-    upstream = (await net.fetch(url.toString(), { method, headers, body: method === "GET" ? undefined : (body.body ?? undefined), redirect: "manual", signal: req.signal })) as Response;
+    upstream = (await net.fetch(url.toString(), { method, headers, body: method === "GET" ? undefined : payload, redirect: "manual", signal: req.signal })) as Response;
   } catch (e) { return err(`Upstream request failed: ${(e as Error).message}`, 502); }
   if (upstream.status >= 300 && upstream.status < 400) return err("Upstream tried to redirect; redirects are not followed", 502);
   const out = new Headers();

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { CheckCircle2, CircleAlert, ExternalLink, Github, Loader2, Rocket, ShieldCheck, Triangle, XCircle, Download, RefreshCw, Plus, Trash2 } from "lucide-react";
-import { github, uid, vercel, zipPackage } from "@omniforge/core";
+import { CheckCircle2, CircleAlert, ExternalLink, Github, Globe, Loader2, Rocket, ShieldCheck, Triangle, XCircle, Download, RefreshCw, Plus, Trash2 } from "lucide-react";
+import { github, uid, vercel, zipPackage, type DeploymentRecord } from "@omniforge/core";
+import { CF_KEY, NL_KEY, TARGET_LABEL, deployStatic, guessPublishDir, siteFiles, type StaticTarget } from "@/lib/static-deploy";
 import { useApp } from "@/lib/store";
 import { VC_KEY, ghOpts, publishPullRequest, publishToGitHub, vcOpts } from "@/lib/github";
 import { vault } from "@/lib/vault";
@@ -23,11 +24,11 @@ export default function Deployments() {
   const stop = blocked(checks);
   const [hasVc, setHasVc] = useState(false);
   useEffect(() => { void vault.get(VC_KEY).then((t) => setHasVc(!!t)).catch(() => {}); }, []);
-  const record = (d: { provider: "vercel" | "github" | "local"; url?: string; status: string; detail?: string }) => mutate((p) => ({ ...p, deployments: [{ id: uid("dep"), at: new Date().toISOString(), ...d }, ...p.deployments] }));
+  const record = (d: { provider: DeploymentRecord["provider"]; url?: string; status: string; detail?: string }) => mutate((p) => ({ ...p, deployments: [{ id: uid("dep"), at: new Date().toISOString(), ...d }, ...p.deployments] }));
 
   return (
     <div className="mx-auto max-w-4xl space-y-5 p-4 sm:p-6">
-      <SectionTitle title="Deployments" sub="Ship the active project to Vercel or GitHub. A deployment only counts as live after its URL is fetched and answers — never because an API call returned." />
+      <SectionTitle title="Deployments" sub="Ship the active project to Vercel, Netlify, Cloudflare Pages or GitHub. A deployment only counts as live after its URL is fetched and answers — never because an API call returned." />
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><ShieldCheck className="size-4" />Pre-flight checks</CardTitle><span className="text-xs text-muted">{project?.name}</span></CardHeader>
         <ul className="divide-y divide-line">{checks.map((c) => <li key={c.id} className="flex items-start gap-3 px-4 py-2.5 text-[13px]">{ICON[c.status]}<div><span className="font-medium">{c.label}</span><span className="text-muted"> — {c.detail}</span></div></li>)}</ul>
@@ -37,6 +38,7 @@ export default function Deployments() {
         <VercelPanel files={files} fw={fw} blocked={stop} hasToken={hasVc} name={slug(project?.name ?? "app")} record={record} teamId={settings.vercel.teamId} />
         <GitHubPanel files={files} blocked={stop} name={slug(project?.name ?? "app")} record={record} />
       </div>
+      <StaticPanel files={files} blocked={stop} name={slug(project?.name ?? "app")} record={record} />
       <Card><CardBody className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-medium">Download only</p><p className="text-xs text-muted">Get a ZIP of the project to deploy anywhere yourself.</p></div><Button variant="secondary" icon={<Download className="size-4" />} disabled={!Object.keys(files).length} onClick={() => { download(`${slug(project?.name ?? "app")}.zip`, zipPackage(new Map(Object.entries(files).map(([k, v]) => [k, new TextEncoder().encode(v)]))), "application/zip"); record({ provider: "local", status: "exported ZIP" }); }}>Download ZIP</Button></CardBody></Card>
       <History />
     </div>
@@ -87,6 +89,58 @@ function VercelPanel({ files, fw, blocked: stop, hasToken, name, record, teamId 
           </div>}
         </>}
       </CardBody></Card>
+  );
+}
+
+/** Netlify and Cloudflare Pages: upload a static/already-built folder as-is (no build step), then verify the URL the API returned. */
+function StaticPanel({ files, blocked: stop, name, record }: { files: Record<string, string>; blocked: boolean; name: string; record: (d: any) => void }) {
+  const nav = useNavigate();
+  const [target, setTarget] = useState<StaticTarget>("netlify");
+  const [has, setHas] = useState<Record<StaticTarget, boolean>>({ netlify: false, cloudflare: false });
+  useEffect(() => { void Promise.all([vault.get(NL_KEY).catch(() => undefined), vault.get(CF_KEY).catch(() => undefined)]).then(([n, c]) => setHas({ netlify: !!n, cloudflare: !!c })); }, []);
+  const [n, setN] = useState(name); useEffect(() => setN(name), [name]);
+  const guessed = useMemo(() => guessPublishDir(files), [files]);
+  const [dir, setDir] = useState(guessed); useEffect(() => setDir(guessed), [guessed]);
+  const [env, setEnv] = useState<"production" | "preview">("production");
+  const [busy, setBusy] = useState(false);
+  const [state, setState] = useState<{ step: string; url?: string; deployUrl?: string; probe?: ProbeResult; error?: string } | null>(null);
+  const list = useMemo(() => siteFiles(files, dir), [files, dir]);
+  const hasIndex = list.some((f) => f.path === "index.html");
+  const label = TARGET_LABEL[target];
+  const run = async () => {
+    setBusy(true); setState({ step: "Waiting for approval…" });
+    try {
+      const r = await deployStatic(target, n, list, { branch: target === "cloudflare" && env === "preview" ? "preview" : undefined, onState: (s) => setState((p) => ({ ...p, step: `${label}: ${s}…` })) });
+      if (!r.ok || !r.url) { setState({ step: "Failed", error: r.error ?? `${label} reported “${r.state}”`, deployUrl: r.deployUrl }); record({ provider: target, status: "failed", detail: r.error ?? r.state }); return; }
+      setState({ step: "Verifying the live URL…", url: r.url, deployUrl: r.deployUrl });
+      let probe: ProbeResult; try { probe = await probeUrl(r.url); } catch (e) { probe = { ok: false, status: 0, ms: 0, error: (e as Error).message }; }
+      setState({ step: probe.ok ? "Live" : "Not verified", url: r.url, deployUrl: r.deployUrl, probe });
+      record({ provider: target, url: r.url, status: probe.ok ? `live — verified HTTP ${probe.status} in ${probe.ms} ms` : `uploaded, but verification failed: ${probe.error ?? `HTTP ${probe.status}`}` });
+    } catch (e) {
+      const msg = (e as Error).message; setState({ step: /cancelled/i.test(msg) ? "Cancelled" : "Failed", error: msg });
+      if (!/cancelled/i.test(msg)) record({ provider: target, status: "failed", detail: msg });
+    } finally { setBusy(false); }
+  };
+  const bad = state?.step === "Failed" || state?.step === "Not verified";
+  return (
+    <section aria-label="Static hosting"><Card><CardHeader><CardTitle className="flex items-center gap-2"><Globe className="size-4" />Netlify / Cloudflare Pages</CardTitle>{has[target] ? <Badge tone="ok" dot>{label} connected</Badge> : <Badge>{label} not connected</Badge>}</CardHeader>
+      <CardBody className="space-y-4">
+        <Segmented size="sm" value={target} onChange={(v) => { setTarget(v); setState(null); }} options={[{ value: "netlify", label: "Netlify" }, { value: "cloudflare", label: "Cloudflare Pages" }]} />
+        {!has[target] ? <div className="space-y-3 text-[13px] text-muted"><p>Connect {label} to deploy from here.</p><Button variant="secondary" onClick={() => nav("/integrations")}>Connect {label}</Button></div> : <>
+          <p className="text-xs text-muted">Uploads the files exactly as they are — <b>no build step runs</b>. For an app that needs building, build it first and publish its output folder (e.g. <code>dist</code>).{target === "cloudflare" ? " Pages Functions (_worker.js, functions/) are not supported here." : ""}</p>
+          <div className="grid grid-cols-2 gap-3"><Field label={target === "netlify" ? "Site name" : "Project name"}><Input value={n} onChange={(e) => setN(slug(e.target.value))} /></Field><Field label="Folder to publish" hint={`${list.length} file${list.length === 1 ? "" : "s"}${hasIndex ? "" : " · no index.html"}`}><Input value={dir} onChange={(e) => setDir(e.target.value.trim())} placeholder="(project root)" spellCheck={false} /></Field></div>
+          {target === "cloudflare" && <Field label="Environment" group><Segmented size="sm" value={env} onChange={setEnv} options={[{ value: "production", label: "Production branch" }, { value: "preview", label: "Preview branch" }]} /></Field>}
+          {!hasIndex && list.length > 0 && <p className="text-xs text-warn">There is no index.html at the top of this folder — the site root will 404.</p>}
+          <Button variant="primary" icon={busy ? <Loader2 className="size-4 animate-spin" /> : <Rocket className="size-4" />} disabled={stop || busy || !n || list.length === 0} onClick={run} title={stop ? "Fix the failing pre-flight checks first" : undefined}>Deploy to {label}</Button>
+          {state && <div data-testid="static-deploy-state" className={cn("space-y-2 rounded-xl border p-3 text-[13px]", state.step === "Live" ? "border-ok/40 bg-ok/5" : bad ? "border-bad/40 bg-bad/5" : "border-line")}>
+            <div className="flex items-center gap-2 font-medium">{state.step === "Live" ? <CheckCircle2 className="size-4 text-ok" /> : bad ? <XCircle className="size-4 text-bad" /> : state.step === "Cancelled" ? <CircleAlert className="size-4 text-warn" /> : <Loader2 className="size-4 animate-spin" />}{state.step}</div>
+            {state.url && <a href={state.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 break-all text-accent hover:underline">{state.url}<ExternalLink className="size-3 shrink-0" /></a>}
+            {state.deployUrl && state.deployUrl !== state.url && <p className="break-all text-xs text-muted">This deploy's own URL: {state.deployUrl}</p>}
+            {state.probe && <p className="text-xs text-muted">{state.probe.ok ? `Fetched by our server: HTTP ${state.probe.status} in ${state.probe.ms} ms${state.probe.title ? ` — “${state.probe.title}”` : ""}.` : `Not verified: ${state.probe.error ?? `HTTP ${state.probe.status}`}`}</p>}
+            {state.error && <p className="text-bad">{state.error}</p>}
+          </div>}
+        </>}
+      </CardBody></Card></section>
   );
 }
 
@@ -151,7 +205,7 @@ function History() {
   return (
     <Card><CardHeader><CardTitle>History</CardTitle><span className="text-xs text-muted">{list.length}</span></CardHeader>
       {list.length === 0 ? <EmptyState icon={<Rocket className="size-5" />} title="Nothing deployed yet" body="Deployments, pushes and exports appear here with their verification result." /> :
-        <ul className="divide-y divide-line">{list.map((d) => <li key={d.id} className="flex flex-wrap items-center gap-3 px-4 py-3 text-[13px]"><Badge tone={/^live|pushed|exported/.test(d.status) ? "ok" : /protect|built/.test(d.status) ? "warn" : "bad"}>{d.provider}</Badge><div className="min-w-0 flex-1"><div className="truncate">{d.status}{d.detail ? ` — ${d.detail}` : ""}</div>{d.url && <a className="truncate text-xs text-accent hover:underline" href={d.url} target="_blank" rel="noopener noreferrer">{d.url}</a>}</div><span className="text-xs text-faint">{ago(d.at)}</span>{d.url && d.provider === "vercel" && <Button size="icon-sm" variant="ghost" aria-label="Re-verify" title="Fetch the URL again" onClick={() => reverify(d.id, d.url!)}><RefreshCw className={cn("size-3.5", busy === d.id && "animate-spin")} /></Button>}</li>)}</ul>}
+        <ul className="divide-y divide-line">{list.map((d) => <li key={d.id} className="flex flex-wrap items-center gap-3 px-4 py-3 text-[13px]"><Badge tone={/^live|pushed|exported/.test(d.status) ? "ok" : /protect|built/.test(d.status) ? "warn" : "bad"}>{d.provider}</Badge><div className="min-w-0 flex-1"><div className="truncate">{d.status}{d.detail ? ` — ${d.detail}` : ""}</div>{d.url && <a className="truncate text-xs text-accent hover:underline" href={d.url} target="_blank" rel="noopener noreferrer">{d.url}</a>}</div><span className="text-xs text-faint">{ago(d.at)}</span>{d.url && ["vercel", "netlify", "cloudflare"].includes(d.provider) && <Button size="icon-sm" variant="ghost" aria-label="Re-verify" title="Fetch the URL again" onClick={() => reverify(d.id, d.url!)}><RefreshCw className={cn("size-3.5", busy === d.id && "animate-spin")} /></Button>}</li>)}</ul>}
     </Card>
   );
 }

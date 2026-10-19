@@ -6,9 +6,11 @@
  *   • anything else → direct (user's custom endpoint; CORS is the endpoint's responsibility)
  */
 import { isTauri, type Bridge } from "./bridge";
+import { forwardBody } from "./forward-body";
 
 const DIRECT_OK = new Set(["api.osv.dev", "api.anthropic.com", "api.openai.com", "openrouter.ai", "generativelanguage.googleapis.com", "api.mistral.ai", "api.groq.com", "api.together.xyz", "api.deepseek.com", "api.github.com"]);
-const FORWARDABLE = new Set(["api.x.ai", "api.moonshot.ai", "api.moonshot.cn", "api.vercel.com", ...DIRECT_OK]);
+// Netlify / Cloudflare deploy APIs are not relied on for browser CORS (Cloudflare's API does not allow it): they always go through a forwarder.
+const FORWARDABLE = new Set(["api.x.ai", "api.moonshot.ai", "api.moonshot.cn", "api.vercel.com", "api.netlify.com", "api.cloudflare.com", ...DIRECT_OK]);
 const isLocal = (h: string) => h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h === "::1";
 
 export function smartFetch(getBridge: () => Bridge | null, hostedBase = ""): typeof fetch {
@@ -24,7 +26,7 @@ export function smartFetch(getBridge: () => Bridge | null, hostedBase = ""): typ
     if (FORWARDABLE.has(url.hostname)) {
       if (bridge) return bridge.fetchLike(url.toString(), init);
       const headers: Record<string, string> = {}; new Headers(init?.headers).forEach((v, k) => (headers[k] = v));
-      return fetch(`${hostedBase}/api/forward`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: url.toString(), method: init?.method ?? "GET", headers, body: typeof init?.body === "string" ? init.body : null }), signal: init?.signal });
+      return fetch(`${hostedBase}/api/forward`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url: url.toString(), method: init?.method ?? "GET", headers, body: null, ...forwardBody(init?.body) }), signal: init?.signal });
     }
     return fetch(url, init);
   };

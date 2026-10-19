@@ -89,12 +89,15 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
         const { FORWARD_ALLOW } = await import("../handlers.js");
         if (target.protocol !== "https:" || !FORWARD_ALLOW.has(target.hostname)) return err(`${target.hostname} is not an allowed API host.`, 403);
       }
+      const { forwardedBody } = await import("../handlers.js");
+      let payload: string | Uint8Array<ArrayBuffer> | undefined;
+      try { payload = forwardedBody(b); } catch (e) { return err((e as Error).message, 400); }
       const hdr: Record<string, string> = {};
       for (const [k, v] of Object.entries<string>(b.headers ?? {})) if (/^(authorization|x-api-key|anthropic-version|anthropic-beta|anthropic-dangerous-direct-browser-access|content-type|accept|x-goog-api-key|http-referer|x-title|openai-organization)$/i.test(k)) hdr[k.toLowerCase()] = String(v);
       const method = String(b.method ?? "GET").toUpperCase();
       if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method)) return err("Unsupported method");
       let up: globalThis.Response;
-      try { up = await fetch(target, { method, headers: hdr, body: method === "GET" ? undefined : (b.body ?? undefined), redirect: "manual", signal: req.signal }); }
+      try { up = await fetch(target, { method, headers: hdr, body: method === "GET" ? undefined : payload, redirect: "manual", signal: req.signal }); }
       catch (e) { const cause = (e as { cause?: { code?: string } }).cause?.code; return err(loopback ? `Nothing is listening on ${target.host}${cause ? ` (${cause})` : ""}. Is the model server running?` : `Upstream request failed: ${(e as Error).message}`, 502); }
       if (up.status >= 300 && up.status < 400) return err("Redirects are not followed", 502);
       const h = new Headers(); for (const k of ["content-type", "retry-after"]) if (up.headers.get(k)) h.set(k, up.headers.get(k)!);

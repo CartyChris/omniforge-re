@@ -361,7 +361,7 @@ export interface BuildRecord {
 export interface DeploymentRecord {
   id: string;
   at: string;
-  provider: "vercel" | "github" | "local";
+  provider: "vercel" | "github" | "local" | "netlify" | "cloudflare";
   url?: string;
   status: string;
   detail?: string;
