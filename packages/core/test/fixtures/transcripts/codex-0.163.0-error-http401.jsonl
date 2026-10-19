@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"01a15199-fee9-7e01-a229-d28d29128be2"}
+{"type":"turn.started"}
+{"type":"error","message":"unexpected status 401 Unauthorized: Incorrect API key provided (scripted 401), url: http://127.0.0.1:18080/v1/responses"}
+{"type":"turn.failed","error":{"message":"unexpected status 401 Unauthorized: Incorrect API key provided (scripted 401), url: http://127.0.0.1:18080/v1/responses"}}

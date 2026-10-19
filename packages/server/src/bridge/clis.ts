@@ -5,13 +5,16 @@
  * reported as "unsupported invocation" instead of being driven blindly.
  */
 import { spawn } from "node:child_process";
-import { collect, ProviderError, type ChatEvent, type ChatRequest, type ModelInfo, type Provider, type ProviderStatus } from "@omniforge/core";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { collect, createNormalizer, ProviderError, type AgentEvent, type ChatEvent, type ChatRequest, type ModelInfo, type Provider, type ProviderStatus } from "@omniforge/core";
 import { exec, which } from "./detect.js";
 import { sanitizedEnv } from "./jobs.js";
 
-type Parse = "claude-stream-json" | "jsonl-generic" | "json" | "text";
-export interface Method { id: string; probe: { args: string[]; needs: string[] }; build: (o: { prompt: string; model?: string; cwd?: string; permissionMode?: string }) => string[]; stdin?: boolean; parse: Parse; note?: string }
-export interface CliAdapter { id: string; name: string; bins: string[]; versionArgs: string[]; vendor: string; agentic: boolean; methods: Method[]; authCheck?: { args: string[]; ok: (r: { code: number; out: string }) => boolean }; install: string; docs?: string }
+type Parse = "claude-stream-json" | "agent" | "jsonl-generic" | "json" | "text";
+export interface Method { id: string; probe: { args: string[]; needs: string[] }; build: (o: { prompt: string; model?: string; cwd?: string; permissionMode?: string }) => string[]; stdin?: boolean; parse: Parse; note?: string; /** extra environment for this method (read-only permissions etc.) */ env?: Record<string, string> }
+export interface CliAdapter { id: string; name: string; bins: string[]; versionArgs: string[]; vendor: string; agentic: boolean; methods: Method[]; authCheck?: { args: string[]; ok: (r: { code: number; out: string }) => boolean }; /** the CLI's own sign-in command, run in Terminal for the user */ login?: string[]; /** agent mode only, never a chat provider */ agentOnly?: boolean; /** sign-in check that needs no command */ authProbe?: () => boolean; install: string; docs?: string }
 
 export const ADAPTERS: CliAdapter[] = [
   {
@@ -24,33 +27,46 @@ export const ADAPTERS: CliAdapter[] = [
   },
   {
     id: "codex", name: "OpenAI Codex CLI", bins: ["codex"], versionArgs: ["--version"], vendor: "OpenAI", agentic: true, install: "npm install -g @openai/codex",
+    // `codex login status` exits 1 with "Not logged in" (recorded, 0.163.0)
+    authCheck: { args: ["login", "status"], ok: (r) => r.code === 0 && /logged in/i.test(r.out) && !/not logged in/i.test(r.out) },
+    login: ["codex", "login"],
     methods: [
-      { id: "exec-json", probe: { args: ["exec", "--help"], needs: ["--json"] }, parse: "jsonl-generic", build: ({ prompt, model }) => ["exec", "--json", "--skip-git-repo-check", ...(model ? ["--model", model] : []), prompt] },
-      { id: "exec", probe: { args: ["--help"], needs: ["exec"] }, parse: "text", build: ({ prompt, model }) => ["exec", ...(model ? ["--model", model] : []), prompt] },
+      // chat: read-only sandbox, no project config/AGENTS.md, events parsed by the recorded normaliser
+      { id: "exec-json", probe: { args: ["exec", "--help"], needs: ["--json", "--sandbox", "--ignore-user-config"] }, parse: "agent", build: ({ prompt, model }) => ["exec", "--json", "--skip-git-repo-check", "--ephemeral", "--ignore-user-config", "--sandbox", "read-only", "-c", "project_doc_max_bytes=0", "-c", 'web_search="disabled"', ...(model ? ["-m", model] : []), prompt] },
     ],
   },
   {
     id: "gemini", name: "Gemini CLI", bins: ["gemini"], versionArgs: ["--version"], vendor: "Google", agentic: true, install: "npm install -g @google/gemini-cli",
+    login: ["gemini"], // no login subcommand: the first interactive run offers "Sign in with Google"
+    // signed in = a cached Google login, or an API key / Vertex set up (paths and names only; secrets are never read)
+    authProbe: () => fs.existsSync(path.join(os.homedir(), ".gemini", "oauth_creds.json")) || fs.existsSync(path.join(os.homedir(), ".gemini", "gemini-credentials.json")) || !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || process.env.GOOGLE_GENAI_USE_VERTEXAI),
     methods: [
-      { id: "prompt-json", probe: { args: ["--help"], needs: ["--prompt", "--output-format"] }, parse: "json", build: ({ prompt, model }) => ["--prompt", prompt, "--output-format", "json", ...(model ? ["--model", model] : [])] },
-      { id: "prompt", probe: { args: ["--help"], needs: ["--prompt"] }, parse: "text", build: ({ prompt, model }) => ["--prompt", prompt, ...(model ? ["--model", model] : [])] },
+      // chat: plan (read-only) approval mode; trust skipped so project settings are not loaded (recorded, 0.64.0)
+      { id: "prompt-stream-json", probe: { args: ["--help"], needs: ["--output-format", "--approval-mode", "--skip-trust"] }, parse: "agent", build: ({ prompt, model }) => ["-p", prompt, "--output-format", "stream-json", "--approval-mode", "plan", "--skip-trust", ...(model ? ["-m", model] : [])] },
     ],
   },
   {
     id: "opencode", name: "OpenCode", bins: ["opencode"], versionArgs: ["--version"], vendor: "SST", agentic: true, install: "npm install -g opencode-ai",
-    methods: [{ id: "run", probe: { args: ["--help"], needs: ["run"] }, parse: "text", build: ({ prompt, model }) => ["run", ...(model ? ["--model", model] : []), prompt] }],
+    // `opencode auth list` always exits 0; it prints "— N credentials"
+    authCheck: { args: ["auth", "list"], ok: (r) => /[1-9]\d* credentials?/.test(r.out.replace(/\x1b\[[0-9;]*m/g, "")) },
+    login: ["opencode", "auth", "login"],
+    methods: [
+      // chat: prompt on stdin (positional prompts arrive quoted), edits/shell/web denied, project config off (recorded, 1.19.3)
+      { id: "run-json", probe: { args: ["run", "--help"], needs: ["--format"] }, stdin: true, parse: "agent", build: ({ model }) => ["run", "--pure", "--format", "json", "--title", "OmniForge chat", ...(model ? ["-m", model] : [])], env: { OPENCODE_PERMISSION: JSON.stringify({ edit: "deny", bash: "deny", webfetch: "deny" }), OPENCODE_DISABLE_PROJECT_CONFIG: "1", OPENCODE_DISABLE_CLAUDE_CODE: "1", OPENCODE_DISABLE_AUTOUPDATE: "1" } },
+    ],
   },
   {
-    id: "aider", name: "Aider", bins: ["aider"], versionArgs: ["--version"], vendor: "Aider", agentic: true, install: "pipx install aider-chat",
-    methods: [{ id: "message", probe: { args: ["--help"], needs: ["--message"] }, parse: "text", build: ({ prompt, model }) => ["--message", prompt, "--yes-always", "--no-pretty", "--no-stream", "--no-auto-commits", ...(model ? ["--model", model] : [])], note: "Edits files in the working directory" }],
+    id: "aider", name: "Aider", bins: ["aider"], versionArgs: ["--version"], vendor: "Aider", agentic: true, install: "pipx install aider-chat", agentOnly: true,
+    // Aider has no subscription login and needs a model + key chosen in OmniForge; it is offered in agent mode only (not as a chat provider)
+    methods: [{ id: "message", probe: { args: ["--help"], needs: ["--message", "--yes-always", "--no-auto-commits"] }, parse: "text", build: ({ prompt }) => ["--message", prompt] }],
   },
 ];
 
 export type CliStatus = "ready" | "installed-unauthenticated" | "unsupported-invocation" | "not-installed" | "needs-configuration";
-export interface CliInfo { id: string; name: string; vendor: string; status: CliStatus; path?: string; version?: string; method?: string; methods: { id: string; supported: boolean; missing: string[] }[]; authenticated?: boolean | "unknown"; detail?: string; install: string; agentic: boolean; verified?: { ok: boolean; ms: number; reply?: string; error?: string } }
+export interface CliInfo { id: string; name: string; vendor: string; status: CliStatus; path?: string; version?: string; method?: string; methods: { id: string; supported: boolean; missing: string[] }[]; authenticated?: boolean | "unknown"; detail?: string; install: string; agentic: boolean; agentOnly?: boolean; canLogin?: boolean; verified?: { ok: boolean; ms: number; reply?: string; error?: string } }
 
 export async function probeCli(a: CliAdapter): Promise<CliInfo> {
-  const base = { id: a.id, name: a.name, vendor: a.vendor, install: a.install, agentic: a.agentic, methods: [] as CliInfo["methods"] };
+  const base = { id: a.id, name: a.name, vendor: a.vendor, install: a.install, agentic: a.agentic, agentOnly: !!a.agentOnly, canLogin: !!a.login, methods: [] as CliInfo["methods"] };
   const bin = a.bins.map(which).find(Boolean) ?? null;
   if (!bin) return { ...base, status: "not-installed" };
   const v = await exec(bin, a.versionArgs, { timeoutMs: 8000 });
@@ -69,6 +85,7 @@ export async function probeCli(a: CliAdapter): Promise<CliInfo> {
   }
   let authenticated: CliInfo["authenticated"] = "unknown";
   if (a.authCheck) { const r = await exec(bin, a.authCheck.args, { timeoutMs: 10_000 }); authenticated = a.authCheck.ok({ code: r.code, out: r.stdout + r.stderr }); }
+  else if (a.authProbe) authenticated = a.authProbe();
   if (!chosen) return { ...base, path: bin, version, methods, authenticated, status: "unsupported-invocation", detail: "This version's --help does not expose a non-interactive mode this app knows how to drive." };
   return { ...base, path: bin, version, methods, method: chosen, authenticated, status: authenticated === false ? "installed-unauthenticated" : "ready", detail: authenticated === "unknown" ? "Authentication status is not queryable; run the connectivity test." : undefined };
 }
@@ -87,7 +104,9 @@ export async function* runCli(a: CliAdapter, info: CliInfo, o: RunOptions): Asyn
   if (!info.path || !method) throw new ProviderError(`${a.name} is not available for non-interactive use (${info.status}).`, undefined, a.id);
   if (!method.stdin && o.prompt.length > 100_000) throw new ProviderError(`${a.name} takes the prompt as an argument; ${o.prompt.length} characters is too long for this method.`, undefined, a.id);
   const args = method.build({ prompt: o.prompt, model: o.model, cwd: o.cwd, permissionMode: o.permissionMode });
-  const child = spawn(info.path, args, { cwd: o.cwd, env: sanitizedEnv({ ...(process.env.ANTHROPIC_API_KEY ? {} : {}), ...o.env, ...passEnvFor(a.id) }), detached: true, stdio: [method.stdin ? "pipe" : "ignore", "pipe", "pipe"] });
+  const child = spawn(info.path, args, { cwd: o.cwd, env: sanitizedEnv({ ...o.env, ...passEnvFor(a.id), ...method.env }), detached: true, stdio: [method.stdin ? "pipe" : "ignore", "pipe", "pipe"] });
+  const norm = method.parse === "agent" && a.id !== "claude-code" && a.id !== "aider" ? createNormalizer(a.id as "codex" | "gemini" | "opencode", { work: o.cwd }) : null; let agentError: string | null = null;
+  const fromAgent = (evs: AgentEvent[]) => { for (const e of evs) { if (e.type === "text") { push({ type: "text", text: (emitted ? "\n" : "") + e.text }); emitted = true; } else if (e.type === "result" && !e.ok) agentError = e.text || "the CLI reported an error"; else if (e.type === "error") agentError = e.message; } };
   if (method.stdin) { child.stdin!.end(o.prompt); }
   const timer = o.timeoutMs ? setTimeout(() => killGroup(child.pid), o.timeoutMs) : undefined;
   const onAbort = () => killGroup(child.pid);
@@ -104,6 +123,7 @@ export async function* runCli(a: CliAdapter, info: CliInfo, o: RunOptions): Asyn
   const push = (e: ChatEvent) => { queue.push(e); wake?.(); };
   const handleLine = (line: string) => {
     if (!line.trim()) return;
+    if (norm) return fromAgent(norm.line(line));
     if (method.parse === "text") { push({ type: "text", text: line + "\n" }); emitted = true; return; }
     let j: any;
     try { j = JSON.parse(line); } catch { if (method.parse !== "json") { push({ type: "text", text: line + "\n" }); emitted = true; } return; }
@@ -125,7 +145,7 @@ export async function* runCli(a: CliAdapter, info: CliInfo, o: RunOptions): Asyn
     let i: number;
     while ((i = buf.indexOf("\n")) >= 0) { handleLine(buf.slice(0, i)); buf = buf.slice(i + 1); }
   });
-  child.on("close", (c) => { if (buf.trim()) { method.parse === "json" ? handleLine(buf.replace(/\n/g, " ")) : handleLine(buf); } buf = ""; code = c; ended = true; wake?.(); });
+  child.on("close", (c) => { if (buf.trim()) { method.parse === "json" ? handleLine(buf.replace(/\n/g, " ")) : handleLine(buf); } buf = ""; code = c; if (norm) fromAgent(norm.end(c, stderr)); ended = true; wake?.(); });
   child.on("error", (e) => { stderr += String(e); ended = true; wake?.(); });
   try {
     while (!ended || queue.length) {
@@ -138,6 +158,7 @@ export async function* runCli(a: CliAdapter, info: CliInfo, o: RunOptions): Asyn
     if (!ended) killGroup(child.pid);
   }
   if (o.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+  if (agentError && !emitted) throw new ProviderError(`${a.name}: ${agentError}`, undefined, a.id);
   if (code !== 0 && !emitted) throw new ProviderError(`${a.name} exited with code ${code}: ${stderr.trim().split("\n").slice(-3).join(" ").slice(0, 300) || "no output"}`, undefined, a.id);
   yield { type: "done", finish: code === 0 ? "stop" : "error" };
 }

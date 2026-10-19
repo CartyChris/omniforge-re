@@ -253,3 +253,38 @@ test("desktop UI: an MCP server's tools reach OmniForge's own Build agents — a
   await expect(page.getByTestId("mcp-result-mini")).not.toContainText("not approved");
   noErrors(errors);
 });
+
+test("desktop UI: Agent CLI tab drives other CLIs too — Codex consent shows its isolation flags; Aider needs a model; sign-in is offered when needed (bridge stubbed)", async ({ page, request }) => {
+  const errors = await asDesktop(page);
+  const ok = await request.post("http://127.0.0.1:4466/bridge/roots", { data: { path: DIR, writable: true }, headers: { authorization: `Bearer ${UI_TOKEN}`, origin: "tauri://localhost", "x-omniforge-bridge": "1" } });
+  expect(ok.ok()).toBe(true);
+  const cors = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET,POST,DELETE,OPTIONS" };
+  await page.route("**/bridge/info*", async (route) => { const res = await route.fetch(); const j = await res.json(); j.clis = [
+    { id: "claude-code", name: "Claude Code", status: "ready", version: "9.9.9", agentic: true, canLogin: true },
+    { id: "codex", name: "OpenAI Codex CLI", status: "ready", version: "0.163.0", agentic: true, canLogin: true },
+    { id: "gemini", name: "Gemini CLI", status: "installed-unauthenticated", version: "0.64.0", agentic: true, canLogin: true },
+    { id: "aider", name: "Aider", status: "ready", version: "0.86.2", agentic: true, agentOnly: true }]; await route.fulfill({ response: res, json: j, headers: { ...res.headers(), ...cors } }); });
+  let runBody: any; let loginBody: any;
+  await page.route("**/bridge/agent/run", async (route) => { if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors }); runBody = JSON.parse(route.request().postData() ?? "{}"); await route.fulfill({ status: 200, headers: { ...cors, "content-type": "text/event-stream" }, body: `event: start\ndata: ${JSON.stringify({ runId: "0123456789abcdef", copied: 1, bytes: 10, skipped: [] })}\n\nevent: event\ndata: ${JSON.stringify({ type: "result", ok: true, text: "done" })}\n\nevent: done\ndata: ${JSON.stringify({ runId: "0123456789abcdef", ok: true, changes: [] })}\n\n` }); });
+  await page.route("**/bridge/cli/login", async (route) => { if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors }); loginBody = JSON.parse(route.request().postData() ?? "{}"); await route.fulfill({ status: 200, headers: { ...cors, "content-type": "application/json" }, body: JSON.stringify({ opened: true, command: "gemini" }) }); });
+  await page.goto("/#/studio?tab=cli");
+  const picker = page.getByRole("radiogroup", { name: "Coding CLI" });
+  await expect(picker.getByRole("radio")).toHaveCount(4);
+  // Gemini: not signed in → sign-in offered, Run disabled
+  await picker.getByRole("radio", { name: /Gemini CLI/ }).click();
+  await expect(page.getByText(/Sign in with Google/)).toBeVisible(); await expect(page.getByRole("button", { name: "Run on a copy" })).toBeDisabled();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click(); await expect.poll(() => loginBody?.id).toBe("gemini");
+  // Aider: no MCP, no commands, and a model is required
+  await picker.getByRole("radio", { name: /Aider/ }).click();
+  await expect(page.getByText("Give it MCP tools")).toHaveCount(0); await expect(page.getByText("Allow it to run commands")).toHaveCount(0);
+  await page.getByLabel("What should the agent do").fill("Add a footer");
+  await expect(page.getByRole("button", { name: "Run on a copy" })).toBeDisabled();
+  // Codex: consent shows the exact isolation flags; the request names the CLI
+  await picker.getByRole("radio", { name: /Codex/ }).click();
+  await page.getByRole("button", { name: "Run on a copy" }).click();
+  const dlg = page.getByRole("dialog");
+  await expect(dlg).toContainText("Run OpenAI Codex CLI on a copy of"); for (const f of ["--ignore-user-config", "--sandbox workspace-write", "project_doc_max_bytes=0", "--disable shell_tool"]) await expect(dlg).toContainText(f);
+  await dlg.getByRole("button", { name: "Allow once" }).click();
+  await expect.poll(() => runBody?.cli).toBe("codex"); expect(runBody).toMatchObject({ prompt: "Add a footer", allowedCommands: [], mcpServers: [] });
+  noErrors(errors);
+});

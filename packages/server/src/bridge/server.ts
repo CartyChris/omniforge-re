@@ -7,7 +7,7 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
-import { analyzeSnapshot, assessRip, buildAgentPrompt, claudeAgentArgs, discoverLocalServices, effective, investigateSource, type AgentEvent, type Investigation } from "@omniforge/core";
+import { analyzeSnapshot, assessRip, AGENT_CLIS, buildAgentPrompt, claudeAgentArgs, planAgentRun, type AgentCliId, discoverLocalServices, effective, investigateSource, type AgentEvent, type Investigation } from "@omniforge/core";
 import { analyzeHandler, probeHandler } from "../handlers.js";
 import { HttpError, UserError, bytesToB64, err, json, readJson, sse } from "../http.js";
 import { BlockedUrlError, ProviderError, RightsError } from "@omniforge/core";
@@ -22,7 +22,7 @@ import { inspectPath } from "./package.js";
 import { applyReaInstall, planReaInstall, ReaJobs, REA_OPS, reaStatus, reaSummary, reaToInvestigation } from "./rea.js";
 import { findChrome, PlaywrightRenderer } from "./render.js";
 import { verifyUrls } from "./verify.js";
-import { AgentRuns, applyChanges, createShadow, listChanges, readSides, runClaudeAgent } from "./agentrun.js";
+import { AgentRuns, applyChanges, createShadow, listChanges, readSides, runAgentCli, runClaudeAgent } from "./agentrun.js";
 import { backupFiles, record as recordChange } from "./changelog.js";
 import type { Deobfuscator } from "@omniforge/core";
 import { scanSkills } from "./skills.js";
@@ -33,7 +33,7 @@ import { execFile } from "node:child_process";
 import crypto from "node:crypto";
 import { nodeStructureExtractor } from "@omniforge/structure/node";
 
-export interface BridgeOptions { port?: number; uiToken?: string; version?: string; allowedOrigins?: string[]; jobsDir?: string; reaDir?: string; /** tests only: drive this executable as "Claude Code" instead of the installed one */ agentCliPath?: string; /** tests only: home folder to scan for Agent Skills */ skillsHome?: string; /** tests only: how sign-in pages are opened and codes exchanged */ openUrl?: (url: string) => void; oauthFetch?: typeof fetch }
+export interface BridgeOptions { port?: number; uiToken?: string; version?: string; allowedOrigins?: string[]; jobsDir?: string; reaDir?: string; /** tests only: drive this executable as "Claude Code" instead of the installed one */ agentCliPath?: string; /** tests only: drive these executables as the named agent CLIs */ agentCliPaths?: Record<string, string>; /** tests only: home folder to scan for Agent Skills */ skillsHome?: string; /** tests only: how sign-in pages are opened and codes exchanged */ openUrl?: (url: string) => void; oauthFetch?: typeof fetch }
 export interface Bridge { url: string; port: number; auth: BridgeAuth; roots: Roots; jobs: JobManager; close(): Promise<void> }
 
 const ndjson = (lines: Iterable<string>) => { const enc = new TextEncoder(); const it = lines[Symbol.iterator](); return new Response(new ReadableStream<Uint8Array>({ pull(c) { const n = it.next(); if (n.done) c.close(); else c.enqueue(enc.encode(n.value)); } }), { headers: { "content-type": "application/x-ndjson", "cache-control": "no-store" } }); };
@@ -178,22 +178,46 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
     }
 
     /* ---- CLI-direct agent runs: the CLI edits an isolated copy; changes reach the project only through a reviewed apply ---- */
+    if (is("POST", "/bridge/cli/login")) {
+      // Opens the CLI's own sign-in (a fixed command per CLI, never user input) in Terminal; the CLI stores its own credentials.
+      ui(); const b = await readJson(req, 2000); const a = ADAPTERS.find((x) => x.id === b.id); if (!a?.login) return err("This CLI has no sign-in command (it uses API keys).", 400);
+      const info = await probeCli(a); if (!info.path) return err(`${a.name} is not installed. ${a.install}`, 400);
+      const command = [info.path, ...a.login.slice(1)].map((x) => (/^[\w./@:-]+$/.test(x) ? x : `'${x.replace(/'/g, "'\\''")}'`)).join(" ");
+      if (process.platform === "darwin" && !o.openUrl) { execFile("osascript", ["-e", 'tell application "Terminal" to activate', "-e", `tell application "Terminal" to do script ${JSON.stringify(command)}`], () => {}); return json({ opened: true, command }); }
+      return json({ opened: false, command });
+    }
+
+    /* ---- CLI-direct agent runs: the CLI edits an isolated copy; changes reach the project only through a reviewed apply ---- */
     if (is("POST", "/bridge/agent/run")) {
       need(p, "cli"); need(p, "fs:read"); const b = await readJson(req, 2_000_000);
-      if (b.cli !== "claude-code") return err("Only Claude Code can be driven in agent mode so far (other CLIs are used as text providers).", 400);
-      const a = ADAPTERS.find((x) => x.id === "claude-code")!; const info = o.agentCliPath ? { ...(await probeCli(a)), path: o.agentCliPath, status: "ready" as const } : await probeCli(a);
-      if (!info.path || info.status === "not-installed") return err("Claude Code is not installed on this Mac.", 400);
-      if (info.status === "unsupported-invocation") return err("This version of Claude Code does not expose the non-interactive mode this app needs.", 400);
+      const cliId = String(b.cli ?? ""); const caps = AGENT_CLIS.find((c) => c.id === cliId); if (!caps) return err(`Unknown agent CLI “${cliId.slice(0, 40)}”.`, 400);
+      const a = ADAPTERS.find((x) => x.id === cliId)!; const override = o.agentCliPaths?.[cliId] ?? (cliId === "claude-code" ? o.agentCliPath : undefined);
+      const info = override ? { ...(await probeCli(a)), path: override, status: "ready" as const } : await probeCli(a);
+      if (!info.path || info.status === "not-installed") return err(`${a.name} is not installed on this Mac. ${a.install}`, 400);
+      if (info.status === "unsupported-invocation") return err(`This version of ${a.name} does not expose the non-interactive mode this app needs.`, 400);
       const rt = root(b.root); const prompt = buildAgentPrompt(String(b.prompt ?? ""), typeof b.brief === "string" ? b.brief : undefined);
       const budget = Math.min(20, Math.max(0.1, Number(b.maxBudgetUsd) || 2));
       // Only well-formed server entries are forwarded (names, commands and addresses are re-validated by core before anything runs).
       const mcpServers = Array.isArray(b.mcpServers) ? b.mcpServers.slice(0, 9).map((m: any) => ("url" in (m ?? {}) ? { name: String(m.name), url: String(m.url) } : { name: String(m?.name), command: String(m?.command), args: Array.isArray(m?.args) ? m.args.map(String) : [] })) : [];
-      try { claudeAgentArgs({ mcpServers, mcpConfigPath: "x" }); } catch (e) { return err((e as Error).message, 400); }
+      if (mcpServers.length && !caps.mcp) return err(`${caps.label} does not support MCP servers.`, 400);
+      const allowedCommands = Array.isArray(b.allowedCommands) ? b.allowedCommands.map(String).slice(0, 12) : [];
+      if (allowedCommands.length && caps.commands === "none") return err(`${caps.label} cannot run commands in agent mode.`, 400);
+      const model = typeof b.model === "string" && /^[\w.:/@+-]{1,120}$/.test(b.model) ? b.model : undefined;
+      // Aider: a model and (optionally) an API key the user chose in OmniForge; only known key variable names and http(s) bases are accepted
+      const AIDER_KEYS = ["OPENROUTER_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "DEEPSEEK_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY", "XAI_API_KEY"];
+      const aider = cliId === "aider" ? { model: String(b.aider?.model ?? ""), keyEnv: AIDER_KEYS.includes(b.aider?.keyEnv) ? b.aider.keyEnv : undefined, key: typeof b.aider?.key === "string" ? b.aider.key.slice(0, 400) : undefined, apiBase: typeof b.aider?.apiBase === "string" && /^https?:\/\/[^\s]+$/.test(b.aider.apiBase) ? b.aider.apiBase : undefined } : undefined;
+      try {
+        if (cliId === "claude-code") claudeAgentArgs({ mcpServers, mcpConfigPath: "x", allowedCommands });
+        else planAgentRun(cliId as Exclude<AgentCliId, "claude-code">, { prompt, model, allowedCommands, mcpServers, aider, work: "/x", runDir: "/x" });
+      } catch (e) { return err((e as Error).message, 400); }
       return sse(async (send, signal) => {
         const shadow = await createShadow(rt.path); agentRuns.add(shadow, String(b.root));
-        send("start", { runId: shadow.id, copied: shadow.copied, bytes: shadow.bytes, skipped: shadow.skipped.slice(0, 100), cli: info.version });
+        send("start", { runId: shadow.id, copied: shadow.copied, bytes: shadow.bytes, skipped: shadow.skipped.slice(0, 100), cli: info.version, cliName: a.name });
         let result: AgentEvent | undefined;
-        for await (const e of runClaudeAgent(shadow, { cliPath: info.path!, prompt, model: typeof b.model === "string" ? b.model : undefined, allowedCommands: Array.isArray(b.allowedCommands) ? b.allowedCommands.map(String).slice(0, 12) : [], mcpServers: mcpServers, maxBudgetUsd: budget, signal })) { send("event", e); if (e.type === "result") result = e; }
+        const events = cliId === "claude-code"
+          ? runClaudeAgent(shadow, { cliPath: info.path!, prompt, model, allowedCommands, mcpServers, maxBudgetUsd: budget, signal })
+          : runAgentCli(shadow, { cli: cliId as Exclude<AgentCliId, "claude-code">, cliPath: info.path!, prompt, model, allowedCommands, mcpServers, aider, signal });
+        for await (const e of events) { send("event", e); if (e.type === "result") result = e; }
         send("done", { runId: shadow.id, ok: result?.type === "result" && result.ok, result, changes: await listChanges(shadow) });
       }, req);
     }

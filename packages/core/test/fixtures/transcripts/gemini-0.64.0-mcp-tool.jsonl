@@ -1,0 +1,8 @@
+{"type":"init","timestamp":"2026-10-19T00:48:11.580Z","session_id":"d94fde6a-0c6d-4a81-8297-c11c3780cba3","model":"gemini-2.5-pro"}
+{"type":"message","timestamp":"2026-10-19T00:48:11.582Z","role":"user","content":"Call the echo tool"}
+{"type":"message","timestamp":"2026-10-19T00:48:11.620Z","role":"assistant","content":"I'll create hello.txt now.","delta":true}
+{"type":"tool_use","timestamp":"2026-10-19T00:48:11.649Z","tool_name":"mcp_omni_echo_marker","tool_id":"mcp_omni_echo_marker__mcp_omni_echo_marker_1792370891621_0","parameters":{"text":"hello from mock"}}
+{"type":"tool_result","timestamp":"2026-10-19T00:48:11.690Z","tool_id":"mcp_omni_echo_marker__mcp_omni_echo_marker_1792370891621_0","status":"success","output":"echo: hello from mock"}
+{"type":"message","timestamp":"2026-10-19T00:48:11.701Z","role":"assistant","content":"Created `hello.txt` ","delta":true}
+{"type":"message","timestamp":"2026-10-19T00:48:11.702Z","role":"assistant","content":"containing `hi there`.","delta":true}
+{"type":"result","timestamp":"2026-10-19T00:48:11.703Z","status":"success","stats":{"total_tokens":2440,"input_tokens":2400,"output_tokens":40,"cached":0,"input":2400,"duration_ms":123,"tool_calls":1,"models":{"mock-gemini":{"total_tokens":2440,"input_tokens":2400,"output_tokens":40,"cached":0,"input":2400}}}}

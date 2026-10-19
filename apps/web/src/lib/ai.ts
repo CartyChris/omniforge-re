@@ -50,7 +50,7 @@ export async function loadProviders(): Promise<{ providers: Provider[]; skipped:
     const fb = o.cfg.fallbackProviderId ? byId.get(o.cfg.fallbackProviderId) : undefined;
     return governed(o.base, { cfg: o.cfg, meter: o.meter, fallback: fb });
   });
-  if (bridgeInfo && useApp.getState().bridge) for (const c of bridgeInfo.clis.filter((x: any) => x.status === "ready")) final.push(new BridgeCliProvider(c.id, c.name));
+  if (bridgeInfo && useApp.getState().bridge) for (const c of bridgeInfo.clis.filter((x: any) => x.status === "ready" && !x.agentOnly)) final.push(new BridgeCliProvider(c.id, c.name));
   return { providers: final, skipped };
 }
 

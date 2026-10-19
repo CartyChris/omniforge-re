@@ -171,7 +171,7 @@ describe("AI CLI adapters (driven through fake CLIs on PATH)", () => {
   let bin: string; let oldPath: string | undefined;
   const script = (name: string, body: string) => { const p = path.join(bin, name); fs.writeFileSync(p, `#!/bin/sh\n${body}\n`, { mode: 0o755 }); };
   beforeAll(() => {
-    bin = fs.mkdtempSync(path.join(tmp, "bin-")); oldPath = process.env.PATH; process.env.PATH = `${bin}:${oldPath}`;
+    bin = fs.mkdtempSync(path.join(tmp, "bin-")); oldPath = process.env.PATH; process.env.PATH = `${bin}:${oldPath}`; process.env.GEMINI_API_KEY = "test-key"; // Gemini's sign-in check looks for a key or a cached Google login
     // a Claude-like CLI that supports stream-json
     script("claude", `case "$1" in
  --version) echo "2.0.0 (Claude Code)";;
@@ -181,12 +181,12 @@ describe("AI CLI adapters (driven through fake CLIs on PATH)", () => {
 esac`);
     // a codex-like CLI whose --help lacks any non-interactive mode
     script("codex", `case "$1" in --version) echo "codex 0.1.0";; *) echo "Interactive TUI only";; esac`);
-    // gemini-like: supports --prompt only (text)
-    script("gemini", `case "$1" in --version) echo "0.5.1";; --help) echo "  --prompt, -p  Prompt";; --prompt) shift; echo "gemini says: $1";; esac`);
+    // gemini-like: the flags the recorded 0.64.0 invocation needs, answering in its stream-json event shape
+    script("gemini", `case "$1" in --version) echo "0.64.0";; --help) echo "  -p, --prompt"; echo "  --output-format"; echo "  --approval-mode"; echo "  --skip-trust";; -p) shift; echo '{"type":"init","session_id":"s","model":"auto"}'; echo '{"type":"message","role":"assistant","content":"gemini says: '"$(printf '%s' "$1" | tr -dc 'a-zA-Z ' | head -c 20)"'","delta":true}'; echo '{"type":"result","status":"success","stats":{"duration_ms":1}}';; esac`);
     // a CLI that hangs, to test cancellation
-    script("opencode", `case "$1" in --version) echo "1.0.0";; --help) echo "  run  Run a prompt";; run) sleep 60 & echo $! > ${path.join(tmp, "oc.pid")}; wait;; esac`);
+    script("opencode", `case "$1" in --version) echo "1.0.0";; --help) echo "  run  Run a prompt";; run) if [ "$2" = "--help" ]; then echo "  --format"; else sleep 60 & echo $! > ${path.join(tmp, "oc.pid")}; wait; fi;; esac`);
   });
-  afterAll(() => { process.env.PATH = oldPath; });
+  afterAll(() => { process.env.PATH = oldPath; delete process.env.GEMINI_API_KEY; });
 
   it("chooses the invocation method by probing --help, and reports unsupported ones honestly", async () => {
     const claude = await probeCli(ADAPTERS.find((a) => a.id === "claude-code")!);
@@ -196,8 +196,7 @@ esac`);
     expect(codex.status).toBe("unsupported-invocation"); // never driven blindly
     expect(codex.methods.every((m) => !m.supported && m.missing.length > 0)).toBe(true);
     const gemini = await probeCli(ADAPTERS.find((a) => a.id === "gemini")!);
-    expect(gemini).toMatchObject({ status: "ready", method: "prompt" }); // falls back to the supported method
-    expect(gemini.methods.find((m) => m.id === "prompt-json")).toMatchObject({ supported: false, missing: ["--output-format"] });
+    expect(gemini).toMatchObject({ status: "ready", method: "prompt-stream-json" });
     expect((await probeCli(ADAPTERS.find((a) => a.id === "aider")!)).status).toBe("not-installed");
   });
   it("streams Claude stream-json events, sends the prompt over stdin, and reports usage", async () => {
@@ -207,7 +206,7 @@ esac`);
     expect(r.usage).toEqual({ input: 5, output: 3 });
     expect(r.finish).toBe("stop");
   });
-  it("runs a text-mode CLI and exposes any CLI as a Provider for the router/agents", async () => {
+  it("runs a stream-json CLI through its recorded event normaliser and exposes any CLI as a Provider for the router/agents", async () => {
     const a = ADAPTERS.find((x) => x.id === "gemini")!;
     const info = await probeCli(a);
     expect((await collect(runCli(a, info, { prompt: "hi" }))).text).toContain("gemini says: hi");

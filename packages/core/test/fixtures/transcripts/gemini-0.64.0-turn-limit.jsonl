@@ -1,0 +1,6 @@
+{"type":"init","timestamp":"2026-10-19T00:47:12.005Z","session_id":"d8e1811c-e3fc-4baf-a5f0-f24a35f47e1c","model":"gemini-2.5-pro"}
+{"type":"message","timestamp":"2026-10-19T00:47:12.007Z","role":"user","content":"Create a file hello.txt containing exactly: hi there"}
+{"type":"message","timestamp":"2026-10-19T00:47:12.086Z","role":"assistant","content":"I'll create hello.txt now.","delta":true}
+{"type":"tool_use","timestamp":"2026-10-19T00:47:12.134Z","tool_name":"write_file","tool_id":"write_file__write_file_1792370832087_0","parameters":{"file_path":"/tmp/claude-0/runs/gemturns/proj/hello.txt","content":"hi there"}}
+{"type":"tool_result","timestamp":"2026-10-19T00:47:12.193Z","tool_id":"write_file__write_file_1792370832087_0","status":"success"}
+{"type":"result","timestamp":"2026-10-19T00:47:12.195Z","status":"error","error":{"type":"FatalTurnLimitedError","message":"Reached max session turns for this session. Increase the number of turns by specifying maxSessionTurns in settings.json."},"stats":{"total_tokens":1220,"input_tokens":1200,"output_tokens":20,"cached":0,"input":1200,"duration_ms":0,"tool_calls":1,"models":{"mock-gemini":{"total_tokens":1220,"input_tokens":1200,"output_tokens":20,"cached":0,"input":1200}}}}

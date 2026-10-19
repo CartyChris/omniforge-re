@@ -186,12 +186,15 @@ function DesktopOnly() {
 function Clis() {
   const { bridge, bridgeInfo, refreshBridge } = useApp(); const [testing, setTesting] = useState<string | null>(null); const [res, setRes] = useState<Record<string, any>>({});
   const test = async (id: string) => { setTesting(id); try { setRes({ ...res, [id]: await bridge!.post(`/bridge/cli/test`, { id }) }); } catch (e) { toast.error((e as Error).message); } finally { setTesting(null); } };
+  // Opens the CLI's own sign-in in Terminal (Claude, ChatGPT, Google, Copilot… — the CLI keeps its own credentials); rescan afterwards.
+  const login = async (id: string) => { try { const r = await bridge!.post<{ opened: boolean; command: string }>("/bridge/cli/login", { id }); r.opened ? toast.success("Finish signing in in the Terminal window, then press Rescan.") : toast.info(`Run this in a terminal, then press Rescan: ${r.command}`); } catch (e) { toast.error((e as Error).message); } };
   return (
     <Card><CardHeader><CardTitle className="flex items-center gap-2"><Bot className="size-4" />AI coding CLIs</CardTitle><Button size="xs" variant="ghost" icon={<RefreshCw className="size-3.5" />} onClick={() => refreshBridge(true)}>Rescan</Button></CardHeader>
       <ul className="divide-y divide-line">{(bridgeInfo?.clis ?? []).map((c: any) => { const r = res[c.id]?.verified ?? c.verified; return (
         <li key={c.id} className="flex flex-wrap items-center gap-3 px-4 py-3 text-[13px]"><StatusDot tone={c.status === "ready" ? "ok" : c.status === "not-installed" ? "idle" : "warn"} /><div className="min-w-0 flex-1"><div className="font-medium">{c.name} <span className="text-xs font-normal text-faint">{c.vendor}</span></div><div className="truncate text-xs text-muted">{c.status === "ready" ? `${c.version ?? ""} · ${c.path}${c.method ? ` · via ${c.method}` : ""}` : c.status === "not-installed" ? <>Not installed — <button className="underline" onClick={() => navigator.clipboard?.writeText(c.install).then(() => toast.success("Copied"))}>{c.install}</button></> : (c.detail ?? c.status)}</div>{r && <div className={cn("mt-1 text-xs", r.ok ? "text-ok" : "text-bad")}>{r.ok ? `Test passed in ${(r.ms / 1000).toFixed(1)}s${r.reply ? ` — “${String(r.reply).slice(0, 40)}”` : ""}` : `Test failed: ${r.error}`}</div>}</div>
-          {c.status === "ready" && <Button size="xs" variant="secondary" loading={testing === c.id} onClick={() => test(c.id)}>Test</Button>}</li>); })}</ul>
-      <p className="border-t border-line px-4 py-2.5 text-xs text-faint">Ready CLIs appear as model providers in AI Studio. They run in a folder you approve, and every command an agent wants to run asks first. “Test” makes one tiny real request (it may use your plan's quota).</p></Card>
+          {c.canLogin && c.status !== "not-installed" && <Button size="xs" variant={c.status === "installed-unauthenticated" ? "primary" : "ghost"} onClick={() => void login(c.id)}>{c.status === "installed-unauthenticated" ? "Sign in" : "Sign in again"}</Button>}
+          {c.status === "ready" && !c.agentOnly && <Button size="xs" variant="secondary" loading={testing === c.id} onClick={() => test(c.id)}>Test</Button>}</li>); })}</ul>
+      <p className="border-t border-line px-4 py-2.5 text-xs text-faint">Ready CLIs appear as model providers in AI Studio (Aider is agent-only), and all five can edit a private copy of a folder in AI Studio → Agent CLI. Sign-in uses each CLI's own login (your Claude, ChatGPT, Google or Copilot subscription). “Test” makes one tiny real request (it may use your plan's quota).</p></Card>
   );
 }
 

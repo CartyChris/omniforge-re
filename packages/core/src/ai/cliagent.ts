@@ -14,6 +14,7 @@ export type AgentEvent =
   | { type: "tool"; name: string; summary: string; path?: string }
   | { type: "tool_result"; ok: boolean; summary: string }
   | { type: "result"; ok: boolean; text: string; costUsd?: number; turns?: number; ms?: number }
+  | { type: "notice"; text: string }
   | { type: "error"; message: string };
 
 const BASE_TOOLS = ["Read", "Edit", "Write", "Glob", "Grep"] as const;

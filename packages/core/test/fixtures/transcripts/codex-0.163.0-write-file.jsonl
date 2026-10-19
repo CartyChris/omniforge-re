@@ -1,0 +1,7 @@
+{"type":"thread.started","thread_id":"01a15199-6632-7c50-8c1a-2b9ffa3915ce"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"reasoning","text":"**Planning file creation**\n\nI will add hello.txt with the requested content."}}
+{"type":"item.started","item":{"id":"item_1","type":"file_change","changes":[{"path":"/tmp/project/hello.txt","kind":"add"}],"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"file_change","changes":[{"path":"/tmp/project/hello.txt","kind":"add"}],"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"Created hello.txt containing \"hi there\"."}}
+{"type":"turn.completed","usage":{"input_tokens":2400,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":60,"reasoning_output_tokens":0}}

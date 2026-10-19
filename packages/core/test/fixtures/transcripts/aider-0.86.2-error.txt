@@ -1,0 +1,45 @@
+Detected dumb terminal, disabling fancy input and pretty output.
+
+Creating empty file /tmp/claude-0/runs/aiderr500/proj/hello.txt
+Aider v0.86.2
+Model: openai/mock with whole edit format
+Git repo: none
+Repo-map: disabled
+Added hello.txt to the chat.
+
+litellm.InternalServerError: InternalServerError: OpenAIException - Mock 
+internal error (scripted)
+The API provider's servers are down or overloaded.
+Retrying in 0.2 seconds...
+litellm.InternalServerError: InternalServerError: OpenAIException - Mock 
+internal error (scripted)
+The API provider's servers are down or overloaded.
+Retrying in 0.5 seconds...
+litellm.InternalServerError: InternalServerError: OpenAIException - Mock 
+internal error (scripted)
+The API provider's servers are down or overloaded.
+Retrying in 1.0 seconds...
+litellm.InternalServerError: InternalServerError: OpenAIException - Mock 
+internal error (scripted)
+The API provider's servers are down or overloaded.
+Retrying in 2.0 seconds...
+litellm.InternalServerError: InternalServerError: OpenAIException - Mock 
+internal error (scripted)
+The API provider's servers are down or overloaded.
+Retrying in 4.0 seconds...
+litellm.InternalServerError: InternalServerError: OpenAIException - Mock 
+internal error (scripted)
+The API provider's servers are down or overloaded.
+Retrying in 8.0 seconds...
+litellm.InternalServerError: InternalServerError: OpenAIException - Mock 
+internal error (scripted)
+The API provider's servers are down or overloaded.
+Retrying in 16.0 seconds...
+litellm.InternalServerError: InternalServerError: OpenAIException - Mock 
+internal error (scripted)
+The API provider's servers are down or overloaded.
+Retrying in 32.0 seconds...
+litellm.InternalServerError: InternalServerError: OpenAIException - Mock 
+internal error (scripted)
+The API provider's servers are down or overloaded.
+

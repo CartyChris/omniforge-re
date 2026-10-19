@@ -1,0 +1,4 @@
+{"type":"init","timestamp":"2026-10-19T00:49:00.251Z","session_id":"2fa2c4d5-393e-4ea6-a0ed-90360b5199b4","model":"gemini-2.5-pro"}
+{"type":"message","timestamp":"2026-10-19T00:49:00.252Z","role":"user","content":"Create a file hello.txt containing exactly: hi there"}
+{"type":"error","timestamp":"2026-10-19T00:49:00.354Z","severity":"error","message":"The model response was blocked due to safety settings."}
+{"type":"result","timestamp":"2026-10-19T00:49:00.354Z","status":"error","stats":{"total_tokens":1220,"input_tokens":1200,"output_tokens":20,"cached":0,"input":1200,"duration_ms":104,"tool_calls":0,"models":{"mock-gemini":{"total_tokens":1220,"input_tokens":1200,"output_tokens":20,"cached":0,"input":1200},"gemini-2.5-pro":{"total_tokens":0,"input_tokens":0,"output_tokens":0,"cached":0,"input":0}}}}

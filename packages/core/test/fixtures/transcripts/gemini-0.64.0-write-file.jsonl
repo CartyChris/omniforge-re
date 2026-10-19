@@ -1,0 +1,8 @@
+{"type":"init","timestamp":"2026-10-19T00:40:49.085Z","session_id":"70167003-8f9c-4ee5-a84e-a4e291010b38","model":"auto"}
+{"type":"message","timestamp":"2026-10-19T00:40:49.086Z","role":"user","content":"Create a file hello.txt containing exactly: hi there"}
+{"type":"message","timestamp":"2026-10-19T00:40:49.137Z","role":"assistant","content":"I'll create hello.txt now.","delta":true}
+{"type":"tool_use","timestamp":"2026-10-19T00:40:49.191Z","tool_name":"write_file","tool_id":"write_file__write_file_1792370449138_0","parameters":{"file_path":"/tmp/claude-0/runs/gem1/proj/hello.txt","content":"hi there"}}
+{"type":"tool_result","timestamp":"2026-10-19T00:40:49.239Z","tool_id":"write_file__write_file_1792370449138_0","status":"success"}
+{"type":"message","timestamp":"2026-10-19T00:40:49.251Z","role":"assistant","content":"Created `hello.txt` ","delta":true}
+{"type":"message","timestamp":"2026-10-19T00:40:49.252Z","role":"assistant","content":"containing `hi there`.","delta":true}
+{"type":"result","timestamp":"2026-10-19T00:40:49.255Z","status":"success","stats":{"total_tokens":3660,"input_tokens":3600,"output_tokens":60,"cached":0,"input":3600,"duration_ms":170,"tool_calls":1,"models":{"mock-gemini":{"total_tokens":3660,"input_tokens":3600,"output_tokens":60,"cached":0,"input":3600}}}}

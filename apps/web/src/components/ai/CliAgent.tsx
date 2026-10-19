@@ -2,13 +2,15 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Check, FilePlus2, FileX2, Loader2, PencilLine, RotateCcw, SquareTerminal, StopCircle, Terminal, TriangleAlert } from "lucide-react";
 import { useSearchParams } from "react-router";
-import { MCP_PRESETS, REBUILD_MODES, claudeAgentArgs, commandRuleProblem, describeMcpServer, mcpServerProblem, rebuildInstruction, siteBrief, type McpServerSpec, type RebuildMode, type AgentEvent, type Investigation } from "@omniforge/core";
+import { AGENT_CLIS, MCP_PRESETS, REBUILD_MODES, claudeAgentArgs, planAgentRun, type AgentCliId, commandRuleProblem, describeMcpServer, mcpServerProblem, rebuildInstruction, siteBrief, type McpServerSpec, type RebuildMode, type AgentEvent, type Investigation } from "@omniforge/core";
 import { useApp } from "@/lib/store";
 import { readSSE } from "@/lib/bridge";
 import { listRoots, type RootInfo } from "@/lib/local";
 import { requestApproval } from "@/lib/approvals";
 import { audit } from "@/lib/audit";
 import { db } from "@/lib/storage";
+import { vault } from "@/lib/vault";
+import { keyName } from "@/lib/ai";
 import { cn } from "@/lib/utils";
 import { Badge, Button, Card, CardBody, CardHeader, CardTitle, EmptyState, Field, Input, Spinner, Textarea } from "@/components/ui/primitives";
 import { Select } from "@/components/ui/overlay";
@@ -21,10 +23,23 @@ interface Done { runId: string; ok: boolean; result?: Extract<AgentEvent, { type
 const PRESETS = ["npm test", "npm run build", "pytest -q", "go test ./...", "cargo test"];
 const ICON = { added: <FilePlus2 className="size-3.5 text-ok" />, modified: <PencilLine className="size-3.5 text-warn" />, deleted: <FileX2 className="size-3.5 text-bad" /> };
 
-/** Let the user's installed Claude Code edit an ISOLATED COPY of an approved folder. Nothing reaches the folder until the diff has been reviewed and applied. */
+/** Aider has no subscription login: it uses a model + key the user already set up in OmniForge (litellm model names). */
+const AIDER_PROVIDERS: Record<string, { prefix: string; keyEnv?: string; base?: boolean }> = {
+  openrouter: { prefix: "openrouter/", keyEnv: "OPENROUTER_API_KEY" }, openai: { prefix: "openai/", keyEnv: "OPENAI_API_KEY" }, anthropic: { prefix: "anthropic/", keyEnv: "ANTHROPIC_API_KEY" },
+  gemini: { prefix: "gemini/", keyEnv: "GEMINI_API_KEY" }, deepseek: { prefix: "deepseek/", keyEnv: "DEEPSEEK_API_KEY" }, groq: { prefix: "groq/", keyEnv: "GROQ_API_KEY" }, mistral: { prefix: "mistral/", keyEnv: "MISTRAL_API_KEY" }, xai: { prefix: "xai/", keyEnv: "XAI_API_KEY" },
+  // local OpenAI-compatible servers (LM Studio, llama.cpp, MLX, vLLM, Ollama's /v1) through aider's openai/ route with an API base
+  lmstudio: { prefix: "openai/", keyEnv: "OPENAI_API_KEY", base: true }, llamacpp: { prefix: "openai/", keyEnv: "OPENAI_API_KEY", base: true }, mlx: { prefix: "openai/", keyEnv: "OPENAI_API_KEY", base: true }, vllm: { prefix: "openai/", keyEnv: "OPENAI_API_KEY", base: true },
+};
+
+/** Let one of the user's installed coding CLIs edit an ISOLATED COPY of an approved folder. Nothing reaches the folder until the diff has been reviewed and applied. */
 export function CliAgentPanel() {
   const { bridge, bridgeState, bridgeInfo, project, settings } = useApp();
-  const cli = bridgeInfo?.clis.find((c: { id: string }) => c.id === "claude-code") as { status: string; version?: string } | undefined;
+  type CliRow = { id: string; name: string; status: string; version?: string; canLogin?: boolean };
+  const agentClis = ((bridgeInfo?.clis ?? []) as CliRow[]).filter((c) => AGENT_CLIS.some((a) => a.id === c.id) && c.status !== "not-installed");
+  const [cliId, setCliId] = useState<AgentCliId>("claude-code");
+  const cli = agentClis.find((c) => c.id === cliId) ?? agentClis[0]; const caps = AGENT_CLIS.find((a) => a.id === (cli?.id ?? cliId))!;
+  const { providers, models } = useApp(); const [aiderModel, setAiderModel] = useState("");
+  const aiderChoices = models.filter((m) => { const pv = providers.find((p) => p.id === m.provider); return !!pv && !!AIDER_PROVIDERS[pv.preset ?? ""]; }).map((m) => ({ value: `${m.provider}::${m.id}`, label: m.id, hint: providers.find((p) => p.id === m.provider)?.label }));
   const invs = ((project?.investigations ?? []) as unknown as Investigation[]).filter((i) => i.status === "done");
   const [params] = useSearchParams();
   // "Rebuild with Claude Code" arrives as ?inv=&mode=&stack=[&features=a,b][&improve=…]: pre-fill the analysis and the instruction (still editable, still behind the consent dialog).
@@ -52,7 +67,8 @@ export function CliAgentPanel() {
   const cmdProblems = useMemo(() => cmds.map((c) => commandRuleProblem(c)).filter(Boolean), [cmds]);
 
   if (bridgeState !== "connected" || !bridge) return <Card><EmptyState icon={<Terminal className="size-5" />} title="Needs the macOS app" body="Agent mode runs your installed coding CLI on this Mac, on a private copy of a folder you approved. Install and open the desktop app to use it." /></Card>;
-  if (!cli || cli.status === "not-installed") return <Card><EmptyState icon={<Terminal className="size-5" />} title="Claude Code isn't installed" body="Install it (npm install -g @anthropic-ai/claude-code) and sign in once in a terminal, then reopen this tab. Other CLIs are used as text providers in Chat and Build." /></Card>;
+  if (!cli) return <Card><EmptyState icon={<Terminal className="size-5" />} title="No coding CLI installed" body="Install any of Claude Code (npm i -g @anthropic-ai/claude-code), Codex (npm i -g @openai/codex), Gemini CLI (npm i -g @google/gemini-cli), OpenCode (npm i -g opencode-ai) or Aider (pipx install aider-chat), sign in from Integrations, then reopen this tab." /></Card>;
+  const login = async () => { try { const r = await bridge.post<{ opened: boolean; command: string }>("/bridge/cli/login", { id: cli.id }); r.opened ? toast.success("Finish signing in in Terminal, then rescan in Integrations.") : toast.info(`Run in a terminal: ${r.command}`); } catch (e) { toast.error((e as Error).message); } };
 
   const addCmd = (c: string) => { const t = c.trim(); if (!t || cmds.includes(t)) return; const p = commandRuleProblem(t); if (p) return void toast.error(p); setCmds([...cmds, t]); setCmdText(""); };
   const mcpAll: McpServerSpec[] = [...MCP_PRESETS.map((p) => p.server), ...mcpDefs.filter((d) => !MCP_PRESETS.some((p) => p.server.name === d.name))];
@@ -66,14 +82,25 @@ export function CliAgentPanel() {
   };
   const run = async () => {
     if (!rootInfo || !prompt.trim()) return;
-    const shown = claudeAgentArgs({ allowedCommands: cmds, mcpServers: mcpChosen, mcpConfigPath: "<private config file>" }).filter((_, i, a) => a[i - 1] !== "--append-system-prompt" && a[i] !== "--append-system-prompt");
-    const ok = await requestApproval({ kind: "command", title: `Run Claude Code on a copy of “${rootInfo.label}”?`, detail: `Claude Code ${cli.version ?? ""} will read and edit a private copy of this folder (without credential files, dependencies or any .claude / CLAUDE.md configuration). Your folder is not touched until you review and apply the changes. It uses your own Claude login and may cost credits (capped at $2 for this run).${cmds.length ? ` It may also run these commands inside the copy: ${cmds.join(", ")}.` : " It cannot run shell commands."}${mcpChosen.length ? ` It may use these MCP servers, which are programs or services outside this app that act with your permissions and are not sandboxed: ${mcpChosen.map(describeMcpServer).join(" · ")}.` : ""}`, command: `claude ${shown.join(" ")}${mcpChosen.length ? `\n# MCP config: ${JSON.stringify(Object.fromEntries(mcpChosen.map((m) => [m.name, "url" in m ? { type: "http", url: m.url } : { command: m.command, args: m.args }])))}` : ""}`, danger: cmds.length > 0 || mcpChosen.length > 0 });
+    let aider: { model: string; keyEnv?: string; key?: string; apiBase?: string } | undefined;
+    if (caps.id === "aider") {
+      const [pid, mid] = aiderModel.split("::"); const pv = providers.find((p) => p.id === pid); const map = pv ? AIDER_PROVIDERS[pv.preset ?? ""] : undefined;
+      if (!pv || !map || !mid) return void toast.error("Choose a model for Aider (from one of your providers).");
+      const key = await vault.get(keyName(pv.id)).catch(() => undefined);
+      aider = { model: `${map.prefix}${mid}`, keyEnv: map.keyEnv, key: key ?? (map.base ? "local" : undefined), apiBase: map.base ? pv.baseUrl : undefined };
+    }
+    const shownArgs = caps.id === "claude-code"
+      ? claudeAgentArgs({ allowedCommands: cmds, mcpServers: mcpChosen, mcpConfigPath: "<private config file>" }).filter((_, i, a) => a[i - 1] !== "--append-system-prompt" && a[i] !== "--append-system-prompt")
+      : planAgentRun(caps.id as Exclude<AgentCliId, "claude-code">, { prompt: "<your instruction>", allowedCommands: cmds, mcpServers: mcpChosen, aider: aider && { ...aider, key: aider.key ? "<your key>" : undefined }, work: "<private copy>", runDir: "<private run folder>" }).args;
+    const bin = { "claude-code": "claude", codex: "codex", gemini: "gemini", opencode: "opencode", aider: "aider" }[caps.id];
+    const cmdNote = cmds.length ? (caps.commands === "sandbox" ? ` Codex may run shell commands inside its own sandbox (writes only inside the copy, no network) — it cannot be limited to exact commands.` : ` It may also run these commands inside the copy: ${cmds.join(", ")}.`) : " It cannot run shell commands.";
+    const ok = await requestApproval({ kind: "command", title: `Run ${caps.label} on a copy of “${rootInfo.label}”?`, detail: `${caps.label} ${cli.version ?? ""} will read and edit a private copy of this folder (without credential files, dependencies or any project agent configuration such as .claude, .codex, .gemini, .opencode, AGENTS.md or .aider files). Your folder is not touched until you review and apply the changes. ${caps.id === "aider" ? `It uses ${aider!.model} with your OmniForge key for that provider.` : `It uses your own ${caps.label} sign-in and may use your plan's quota.`}${caps.id === "claude-code" ? " Capped at $2 for this run." : ""}${cmdNote}${mcpChosen.length ? ` It may use these MCP servers, which are programs or services outside this app that act with your permissions and are not sandboxed: ${mcpChosen.map(describeMcpServer).join(" · ")}.` : ""}`, command: `${bin} ${shownArgs.join(" ")}${caps.id === "claude-code" && mcpChosen.length ? `\n# MCP config: ${JSON.stringify(Object.fromEntries(mcpChosen.map((m) => [m.name, "url" in m ? { type: "http", url: m.url } : { command: m.command, args: m.args }])))}` : ""}`, danger: cmds.length > 0 || mcpChosen.length > 0 });
     if (!ok) return;
     const brief = inv !== "none" ? siteBrief(invs.find((i) => i.id === inv)!) : undefined;
     setBusy(true); setEvents([]); setStart(null); setDone(null); setError(null); setApplied(null); setPicked(new Set()); setView(null); const ctrl = new AbortController(); abort.current = ctrl;
-    void audit("agent run started", `Claude Code on ${rootInfo.label}${cmds.length ? ` with commands: ${cmds.join(", ")}` : ""}${mcpChosen.length ? ` with MCP servers: ${mcpChosen.map((m) => m.name).join(", ")}` : ""}`);
+    void audit("agent run started", `${caps.label} on ${rootInfo.label}${cmds.length ? ` with commands: ${cmds.join(", ")}` : ""}${mcpChosen.length ? ` with MCP servers: ${mcpChosen.map((m) => m.name).join(", ")}` : ""}`);
     try {
-      const res = await bridge.raw("POST", "/bridge/agent/run", { cli: "claude-code", root, prompt: prompt.trim(), brief, allowedCommands: cmds, mcpServers: mcpChosen, maxBudgetUsd: 2 }, ctrl.signal);
+      const res = await bridge.raw("POST", "/bridge/agent/run", { cli: caps.id, root, prompt: prompt.trim(), brief, allowedCommands: caps.commands === "none" ? [] : cmds, mcpServers: caps.mcp ? mcpChosen : [], maxBudgetUsd: 2, aider }, ctrl.signal);
       await readSSE(res, (ev, d) => {
         if (ev === "start") setStart(d); else if (ev === "event") setEvents((e) => [...e, d]);
         else if (ev === "done") { setDone(d); setPicked(new Set((d.changes as Change[]).filter((c) => !c.refused && c.status !== "deleted").map((c) => c.path))); setView((d.changes as Change[])[0]?.path ?? null); }
@@ -93,30 +120,33 @@ export function CliAgentPanel() {
 
   return (
     <div className="space-y-5">
-      <Card><CardHeader><CardTitle className="flex items-center gap-2"><SquareTerminal className="size-4" />Claude Code, on a private copy</CardTitle><Badge tone={cli.status === "ready" ? "ok" : "warn"} dot>{cli.status === "ready" ? `v${cli.version ?? "?"}` : cli.status.replace(/-/g, " ")}</Badge></CardHeader>
+      <Card><CardHeader><CardTitle className="flex items-center gap-2"><SquareTerminal className="size-4" />{caps.label}, on a private copy</CardTitle><Badge tone={cli.status === "ready" ? "ok" : "warn"} dot>{cli.status === "ready" ? `v${cli.version ?? "?"}` : cli.status.replace(/-/g, " ")}</Badge></CardHeader>
         <CardBody className="space-y-4">
-          <p className="text-[13px] text-muted">Your installed Claude Code edits a copy of the folder, so you see exactly what it changed before anything reaches your project. {settings.localOnly && <span className="text-warn">Local-only mode is on — Claude Code sends your code to Anthropic, so it is disabled.</span>}</p>
+          <p className="text-[13px] text-muted">Your installed coding CLI edits a copy of the folder, so you see exactly what it changed before anything reaches your project. {settings.localOnly && <span className="text-warn">Local-only mode is on — these CLIs send your code to their vendor, so agent runs are disabled.</span>}</p>
+          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Coding CLI">{agentClis.map((c) => <button key={c.id} role="radio" aria-checked={cli.id === c.id} onClick={() => setCliId(c.id as AgentCliId)} className={cn("rounded-lg border px-2.5 py-1.5 text-[13px]", cli.id === c.id ? "border-accent bg-accent-soft" : "border-line hover:border-line-strong")}>{AGENT_CLIS.find((a) => a.id === c.id)?.label ?? c.name}{c.status === "installed-unauthenticated" && <span className="ml-1 text-[11px] text-warn">· sign in</span>}</button>)}</div>
+          {cli.status === "installed-unauthenticated" && <div className="flex flex-wrap items-center gap-2 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-[13px]"><span className="min-w-0 flex-1">{caps.signIn}</span>{cli.canLogin && <Button size="xs" variant="primary" onClick={() => void login()}>Sign in</Button>}</div>}
+          {caps.needsKey && <Field label="Model for Aider (uses your OmniForge key for that provider)" group><Select label="Aider model" value={aiderModel} onValueChange={setAiderModel} options={aiderChoices} placeholder={aiderChoices.length ? "Choose a model" : "Connect OpenRouter, OpenAI, Anthropic… in Providers first"} /></Field>}
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Project folder (approved)" group><Select label="Project folder" value={root} onValueChange={setRoot} options={roots.map((r) => ({ value: r.id, label: r.label, hint: r.writable ? "writable" : "read-only" }))} placeholder="Approve a folder in Analyze first" /></Field>
             <Field label="Use an analysis as background (optional)" group><Select label="Background analysis" value={inv} onValueChange={setInv} options={[{ value: "none", label: "None" }, ...invs.map((i) => ({ value: i.id, label: i.name }))]} /></Field>
           </div>
           <Field label="What should it do?"><Textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} rows={4} placeholder="e.g. Add a dark-mode toggle to the header and persist the choice in localStorage" aria-label="What should the agent do" /></Field>
-          <details className="text-[13px]"><summary className="cursor-pointer text-muted hover:text-fg">Allow it to run commands (off by default){cmds.length ? ` — ${cmds.length} allowed` : ""}</summary>
-            <div className="mt-2 space-y-2"><p className="text-xs text-muted">Commands run inside the copy as you, not in a sandbox. Only these exact commands (and their arguments) are permitted; everything else is denied.</p>
+          {caps.commands !== "none" && <details className="text-[13px]"><summary className="cursor-pointer text-muted hover:text-fg">Allow it to run commands (off by default){cmds.length ? ` — ${cmds.length} allowed` : ""}</summary>
+            <div className="mt-2 space-y-2"><p className="text-xs text-muted">{caps.commands === "sandbox" ? "Codex runs commands inside its own sandbox (writes only inside the copy, no network). It cannot be limited to exact commands: choosing any command turns its shell on." : "Commands run inside the copy as you, not in a sandbox. Only these exact commands (and their arguments) are permitted; everything else is denied."}</p>
               <div className="flex flex-wrap gap-1.5">{PRESETS.map((p) => <Button key={p} size="xs" variant={cmds.includes(p) ? "primary" : "secondary"} onClick={() => setCmds(cmds.includes(p) ? cmds.filter((x) => x !== p) : [...cmds, p])}>{p}</Button>)}</div>
               <div className="flex gap-2"><Input value={cmdText} onChange={(e) => setCmdText(e.target.value)} placeholder="another command, e.g. make check" aria-label="Add an allowed command" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCmd(cmdText); } }} /><Button size="sm" variant="secondary" onClick={() => addCmd(cmdText)}>Add</Button></div>
               {cmds.filter((c) => !PRESETS.includes(c)).map((c) => <Badge key={c} tone="warn">{c}</Badge>)}
-            </div></details>
-          <details className="text-[13px]"><summary className="cursor-pointer text-muted hover:text-fg">Give it MCP tools (off by default){mcpChosen.length ? ` — ${mcpChosen.length} selected` : ""}</summary>
+            </div></details>}
+          {caps.mcp && <details className="text-[13px]"><summary className="cursor-pointer text-muted hover:text-fg">Give it MCP tools (off by default){mcpChosen.length ? ` — ${mcpChosen.length} selected` : ""}</summary>
             <div className="mt-2 space-y-2"><p className="text-xs text-muted">MCP servers add tools such as a browser, live docs or your own services. A server is a program that runs on this Mac as you (not sandboxed) or a web service that receives what the agent sends it, so choose only ones you trust. Presets are pinned to an exact version.</p>
               <div className="space-y-1.5">{mcpAll.map((m) => { const preset = MCP_PRESETS.find((p) => p.server.name === m.name); return (
                 <label key={m.name} className="flex items-start gap-2 rounded-lg border border-line px-2.5 py-2"><input type="checkbox" className="mt-0.5" checked={mcpOn.has(m.name)} onChange={(e) => setMcpOn((p) => { const n = new Set(p); e.target.checked ? n.add(m.name) : n.delete(m.name); return n; })} aria-label={`Use MCP server ${m.name}`} />
                   <span className="min-w-0 flex-1"><span className="font-medium">{preset?.label ?? m.name}</span>{preset && <span className="text-muted"> — {preset.blurb}</span>}<span className="mt-0.5 block truncate font-mono text-[11px] text-muted" title={describeMcpServer(m)}>{describeMcpServer(m).replace(/^[^:]+: /, "")}</span>{preset && <span className="block text-[11px] text-warn">{preset.leaves}</span>}</span>
                   {!preset && <Button size="xs" variant="ghost" onClick={(e) => { e.preventDefault(); saveDefs(mcpDefs.filter((d) => d.name !== m.name)); setMcpOn((p) => { const n = new Set(p); n.delete(m.name); return n; }); }}>Remove</Button>}</label>); })}</div>
               <div className="grid gap-2 sm:grid-cols-[10rem_1fr_auto]"><Input value={mcpForm.name} onChange={(e) => setMcpForm({ ...mcpForm, name: e.target.value })} placeholder="name, e.g. my-docs" aria-label="MCP server name" /><Input value={mcpForm.target} onChange={(e) => setMcpForm({ ...mcpForm, target: e.target.value })} placeholder="command and arguments, or an https:// address" aria-label="MCP server command or address" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addMcp(); } }} /><Button size="sm" variant="secondary" onClick={addMcp}>Add</Button></div>
-            </div></details>
-          <div className="flex items-center gap-2">{busy && !done ? <Button variant="danger" icon={<StopCircle className="size-4" />} onClick={() => abort.current?.abort()}>Stop</Button> : <Button variant="primary" icon={<Terminal className="size-4" />} disabled={busy || !rootInfo || !prompt.trim() || !!cmdProblems.length || settings.localOnly || cli.status === "installed-unauthenticated"} onClick={() => void run()}>Run on a copy</Button>}
-            {cli.status === "installed-unauthenticated" && <span className="text-xs text-warn">Sign in to Claude Code in a terminal first.</span>}</div>
+            </div></details>}
+          <div className="flex items-center gap-2">{busy && !done ? <Button variant="danger" icon={<StopCircle className="size-4" />} onClick={() => abort.current?.abort()}>Stop</Button> : <Button variant="primary" icon={<Terminal className="size-4" />} disabled={busy || !rootInfo || !prompt.trim() || !!cmdProblems.length || settings.localOnly || cli.status === "installed-unauthenticated" || (caps.needsKey && !aiderModel)} onClick={() => void run()}>Run on a copy</Button>}
+            </div>
         </CardBody></Card>
 
       {(start || events.length > 0 || error) && <Card><CardHeader><CardTitle>Progress</CardTitle>{start && <span className="text-xs text-muted">copied {start.copied} files ({(start.bytes / 1e6).toFixed(1)} MB){start.skipped.length ? `, left out ${start.skipped.length}` : ""}</span>}{busy && !done && <Loader2 className="size-4 animate-spin text-accent" />}</CardHeader>

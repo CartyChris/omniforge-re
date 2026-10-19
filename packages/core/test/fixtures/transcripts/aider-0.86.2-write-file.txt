@@ -1,0 +1,26 @@
+Detected dumb terminal, disabling fancy input and pretty output.
+
+Creating empty file /tmp/claude-0/runs/aidwhole/proj/hello.txt
+Aider v0.86.2
+Model: openai/mock with whole edit format
+Git repo: none
+Repo-map: disabled
+Added hello.txt to the chat.
+
+I will create the file.
+
+
+
+hello.txt
+
+```diff
+@@ -0,0 +1 @@
++hi there
+```
+
+
+
+Created hello.txt containing hi there.
+
+Tokens: 900 sent, 30 received.
+Applied edit to hello.txt

@@ -1,0 +1,4 @@
+{"type":"thread.started","thread_id":"01a15199-c6fd-7553-8ebe-e8a9280223a6"}
+{"type":"turn.started"}
+{"type":"error","message":"We’re currently experiencing high demand, which may cause temporary errors."}
+{"type":"turn.failed","error":{"message":"We’re currently experiencing high demand, which may cause temporary errors."}}

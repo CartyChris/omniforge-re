@@ -250,7 +250,7 @@ describe("privileged capabilities through the bridge (desktop UI token)", () => 
     const ro = (await ui("POST", "/bridge/roots", { path: proj, writable: false })).json;
     // a web session without the cli/fs scopes cannot start a run
     expect((await call("POST", "/bridge/agent/run", { origin: WEB, body: { cli: "claude-code", root: ro.id, prompt: "x" } })).status).toBe(401);
-    const bad = await ui("POST", "/bridge/agent/run", { cli: "gemini", root: ro.id, prompt: "x" }); expect(bad.status).toBe(400);
+    const bad = await ui("POST", "/bridge/agent/run", { cli: "nope", root: ro.id, prompt: "x" }); expect(bad.status).toBe(400); expect((await ui("POST", "/bridge/agent/run", { cli: "aider", root: ro.id, prompt: "x", allowedCommands: ["npm test"] })).status).toBe(400); expect((await ui("POST", "/bridge/agent/run", { cli: "aider", root: ro.id, prompt: "x", mcpServers: [{ name: "a", command: "npx" }] })).json.error).toMatch(/does not support MCP|not installed/);
     const empty = await ui("POST", "/bridge/agent/run", { cli: "claude-code", root: ro.id, prompt: "   " }); expect(empty.status).toBeGreaterThanOrEqual(400);
     // MCP servers are validated by the engine itself, whatever the UI sent: nothing starts and nothing is copied
     for (const mcpServers of [[{ name: "x", command: "bash", args: ["-c", "id"] }], [{ name: "Bad_Name", command: "npx" }], [{ name: "u", url: "http://example.com/mcp" }], [{ name: "d", command: "npx" }, { name: "d", command: "npx" }]]) {

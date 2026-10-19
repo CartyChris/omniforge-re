@@ -42,3 +42,28 @@ jobs:
       - if: failure()
         uses: actions/upload-artifact@v4
         with: { name: playwright-report, path: apps/web/playwright-report, retention-days: 7 }
+
+  # The REAL coding CLIs (pinned) driven through OmniForge's agent harness against a scripted local model: a CLI release that changes
+  # its flags, events or what it loads from a project fails here instead of in the user's run. No vendor accounts are used.
+  agent-clis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pnpm install --frozen-lockfile
+      - name: Install the CLIs (exact versions the transcripts were recorded with)
+        run: |
+          npm install --prefix "$RUNNER_TEMP/clis" @openai/codex@0.163.0 @google/gemini-cli@0.64.0 opencode-ai@1.19.3
+          python -m venv "$RUNNER_TEMP/aider" && "$RUNNER_TEMP/aider/bin/pip" install --quiet aider-chat==0.86.2
+      - name: Live CLI tests
+        run: pnpm --filter @omniforge/server exec vitest run test/agent-clis-live.test.ts
+        env:
+          OMNIFORGE_CODEX_BIN: ${{ runner.temp }}/clis/node_modules/.bin/codex
+          OMNIFORGE_GEMINI_BIN: ${{ runner.temp }}/clis/node_modules/.bin/gemini
+          OMNIFORGE_OPENCODE_BIN: ${{ runner.temp }}/clis/node_modules/.bin/opencode
+          OMNIFORGE_AIDER_BIN: ${{ runner.temp }}/aider/bin/aider

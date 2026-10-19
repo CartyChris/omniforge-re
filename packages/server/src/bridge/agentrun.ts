@@ -14,13 +14,13 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { claudeAgentArgs, mcpConfigJson, normalizeClaudeLine, type AgentEvent, type ClaudeAgentOptions } from "@omniforge/core";
+import { claudeAgentArgs, createNormalizer, mcpConfigJson, normalizeClaudeLine, planAgentRun, type AgentCliId, type AgentEvent, type AgentRunPlanInput, type ClaudeAgentOptions } from "@omniforge/core";
 import { SECRET_FILE } from "./fsx.js";
 import { passEnvFor } from "./clis.js";
 import { augmentedPath, sanitizedEnv } from "./jobs.js";
 
-export const EXCLUDE_DIRS = new Set([".git", "node_modules", ".next", ".nuxt", ".svelte-kit", "dist", "build", "out", "target", ".venv", "venv", "__pycache__", ".turbo", ".cache", ".parcel-cache", "coverage", ".gradle", ".idea", ".vs", ".claude", ".cursor", ".codex", ".gemini", ".aider.tags.cache.v3"]);
-export const EXCLUDE_FILES = /^(?:\.mcp\.json|CLAUDE\.md|CLAUDE\.local\.md|AGENTS\.md|GEMINI\.md|\.DS_Store|\.aider\.chat\.history\.md|\.aider\.input\.history)$/i;
+export const EXCLUDE_DIRS = new Set([".git", "node_modules", ".next", ".nuxt", ".svelte-kit", "dist", "build", "out", "target", ".venv", "venv", "__pycache__", ".turbo", ".cache", ".parcel-cache", "coverage", ".gradle", ".idea", ".vs", ".claude", ".cursor", ".codex", ".gemini", ".opencode", ".agents", ".windsurf", ".continue", ".aider.tags.cache.v3"]);
+export const EXCLUDE_FILES = /^(?:\.mcp\.json|CLAUDE\.md|CLAUDE\.local\.md|AGENTS\.md|GEMINI\.md|\.DS_Store|\.aider[\w.-]*|opencode\.jsonc?|\.cursorrules|\.windsurfrules)$/i;
 export const LIMITS = { files: 20_000, fileBytes: 2_000_000, totalBytes: 200_000_000 };
 
 const git = (cwd: string, args: string[], input?: string) => new Promise<{ code: number; stdout: string; stderr: string }>((resolve) => {
@@ -42,7 +42,7 @@ export async function createShadow(rootPath: string, o: { tmp?: string } = {}): 
     for (const e of await fsp.readdir(abs, { withFileTypes: true })) {
       const r = rel ? `${rel}/${e.name}` : e.name; const a = path.join(abs, e.name);
       if (e.isSymbolicLink()) { skip(r, "symbolic link"); continue; }
-      if (e.isDirectory()) { if (EXCLUDE_DIRS.has(e.name)) { skip(r + "/", e.name === ".claude" || e.name.startsWith(".") && /cursor|codex|gemini/.test(e.name) ? "agent configuration from the project is not trusted" : "excluded folder"); continue; } await fsp.mkdir(path.join(work, r), { recursive: true }); await walk(a, r); continue; }
+      if (e.isDirectory()) { if (isExcludedDir(e.name)) { skip(r + "/", e.name === ".claude" || e.name.startsWith(".") && /cursor|codex|gemini|opencode|agents|windsurf|continue/.test(e.name) ? "agent configuration from the project is not trusted" : "excluded folder"); continue; } await fsp.mkdir(path.join(work, r), { recursive: true }); await walk(a, r); continue; }
       if (!e.isFile()) continue;
       if (SECRET_FILE.test(r)) { skip(r, "credential-style file — never shown to the CLI"); continue; }
       if (EXCLUDE_FILES.test(e.name)) { skip(r, "project agent instructions/config are not trusted"); continue; }
@@ -67,7 +67,8 @@ export async function createShadow(rootPath: string, o: { tmp?: string } = {}): 
 
 export interface Change { path: string; status: "added" | "modified" | "deleted"; additions: number; deletions: number; binary: boolean; refused?: string }
 
-const underExcluded = (rel: string) => rel.split("/").slice(0, -1).some((seg) => EXCLUDE_DIRS.has(seg));
+export const isExcludedDir = (name: string) => EXCLUDE_DIRS.has(name) || /^\.aider/.test(name);
+const underExcluded = (rel: string) => rel.split("/").slice(0, -1).some(isExcludedDir);
 
 export async function listChanges(s: Shadow): Promise<Change[]> {
   await git(s.work, ["add", "-A", "-f"]);
@@ -78,7 +79,9 @@ export async function listChanges(s: Shadow): Promise<Change[]> {
   for (const rec of nu.stdout.split("\0").filter(Boolean)) { const m = rec.match(/^(\S+)\t(\S+)\t([\s\S]+)$/); if (m) counts.set(m[3]!, { a: m[1] === "-" ? 0 : Number(m[1]), d: m[2] === "-" ? 0 : Number(m[2]), bin: m[1] === "-" }); }
   const parts = ns.stdout.split("\0").filter(Boolean); const out: Change[] = [];
   for (let i = 0; i + 1 < parts.length; i += 2) {
-    const code = parts[i]!; const rel = parts[i + 1]!; const status = code.startsWith("A") ? "added" : code.startsWith("D") ? "deleted" : "modified";
+    const code = parts[i]!; const rel = parts[i + 1]!;
+    if (/^\.aider[^/]*\//.test(rel)) continue; // Aider's own repo-map cache: tool state, not a change to review
+    const status = code.startsWith("A") ? "added" : code.startsWith("D") ? "deleted" : "modified";
     const n = counts.get(rel) ?? { a: 0, d: 0, bin: false };
     const ch: Change = { path: rel, status, additions: n.a, deletions: n.d, binary: n.bin };
     let st: fs.Stats | null = null; try { st = await fsp.lstat(path.join(s.work, rel)); } catch { /* deleted */ }
@@ -167,6 +170,45 @@ export async function* runClaudeAgent(s: Shadow, o: AgentRunOptions): AsyncGener
   if (o.signal?.aborted) { yield { type: "error", message: "Cancelled." }; return; }
   if (spawnError) yield { type: "error", message: `Could not start the CLI: ${spawnError}` };
   else if (!sawResult) yield { type: "error", message: `The CLI exited (code ${code}) without a result${stderr.trim() ? `: ${stderr.trim().split("\n").slice(-3).join(" ").slice(0, 300)}` : "."}` };
+}
+
+/* ------------------------------ the other CLIs ------------------------------ */
+
+export interface AgentCliRunOptions extends Omit<AgentRunPlanInput, "work" | "runDir"> { cli: Exclude<AgentCliId, "claude-code">; cliPath: string; timeoutMs?: number; signal?: AbortSignal; env?: Record<string, string>; /** where the user's Codex login lives (default: $CODEX_HOME or ~/.codex) */ codexAuthDir?: string; /** whose ~/.gemini sign-in files to link (default: the user's home) */ geminiAuthDir?: string }
+
+/** Runs Codex / Gemini CLI / OpenCode / Aider on the copy with the recorded-and-tested invocation from core's planAgentRun. */
+export async function* runAgentCli(s: Shadow, o: AgentCliRunOptions): AsyncGenerator<AgentEvent> {
+  let geminiAuthType = o.geminiAuthType;
+  if (o.cli === "gemini" && !geminiAuthType) { try { const j = JSON.parse(await fsp.readFile(path.join(o.geminiAuthDir ?? os.homedir(), ".gemini", "settings.json"), "utf8")); const t = j?.security?.auth?.selectedType ?? j?.selectedAuthType; if (typeof t === "string" && /^[a-z-]{3,40}$/.test(t)) geminiAuthType = t; } catch { /* no settings: Gemini picks from the environment */ } }
+  const plan = planAgentRun(o.cli, { ...o, geminiAuthType, work: s.work, runDir: s.dir }); // validates before anything is written or spawned
+  for (const f of plan.files) { await fsp.mkdir(path.dirname(f.path), { recursive: true, mode: 0o700 }); await fsp.writeFile(f.path, f.content, { mode: 0o600 }); }
+  if (plan.codexHome) {
+    // Codex marks every folder it writes in as trusted in CODEX_HOME/config.toml, so it gets a private CODEX_HOME; the user's login is linked in.
+    await fsp.mkdir(plan.codexHome, { recursive: true, mode: 0o700 });
+    const from = o.codexAuthDir ?? process.env.CODEX_HOME ?? path.join(os.homedir(), ".codex");
+    for (const f of ["auth.json"]) { try { await fsp.access(path.join(from, f)); await fsp.symlink(path.join(from, f), path.join(plan.codexHome, f)); } catch { /* not signed in with a file; an API key in the environment still works */ } }
+  }
+  if (plan.home) await fsp.mkdir(plan.home, { recursive: true, mode: 0o700 });
+  if (plan.geminiHome) {
+    const from = path.join(o.geminiAuthDir ?? os.homedir(), ".gemini");
+    for (const f of ["oauth_creds.json", "google_accounts.json", "gemini-credentials.json", "installation_id"]) { try { await fsp.access(path.join(from, f)); await fsp.symlink(path.join(from, f), path.join(plan.geminiHome, ".gemini", f)); } catch { /* not signed in that way */ } }
+  }
+  const n = createNormalizer(o.cli, { work: s.work, mcpServers: (o.mcpServers ?? []).map((m) => m.name) });
+  const child = spawn(o.cliPath, plan.args, { cwd: s.work, env: sanitizedEnv({ ...passEnvFor(o.cli), ...plan.env, ...o.env }), detached: true, stdio: ["pipe", "pipe", "pipe"] });
+  child.stdin!.on("error", () => {}); child.stdin!.end(plan.stdin);
+  const timer = setTimeout(() => killGroup(child.pid), o.timeoutMs ?? 20 * 60_000);
+  const onAbort = () => killGroup(child.pid); o.signal?.addEventListener("abort", onAbort, { once: true });
+  let stderr = ""; child.stderr!.on("data", (d) => { stderr = (stderr + d.toString()).slice(-8000); });
+  const queue: AgentEvent[] = []; let wake: (() => void) | null = null; let ended = false; let buf = ""; let spawnError: string | null = null;
+  const push = (evs: AgentEvent[]) => { if (evs.length) { queue.push(...evs); wake?.(); } };
+  child.stdout!.on("data", (d) => { buf += d.toString("utf8"); let i: number; while ((i = buf.indexOf("\n")) >= 0) { push(n.line(buf.slice(0, i))); buf = buf.slice(i + 1); } if (buf.length > 4_000_000) buf = ""; });
+  child.on("close", (c) => { if (buf) push(n.line(buf)); buf = ""; if (!spawnError && !o.signal?.aborted) push(n.end(c, stderr)); ended = true; wake?.(); });
+  child.on("error", (e) => { spawnError = e.message; ended = true; wake?.(); });
+  try {
+    while (!ended || queue.length) { if (queue.length) { yield queue.shift()!; continue; } await new Promise<void>((r) => { wake = r; }); }
+  } finally { clearTimeout(timer); o.signal?.removeEventListener("abort", onAbort); if (!ended) killGroup(child.pid); }
+  if (o.signal?.aborted) { yield { type: "error", message: "Cancelled." }; return; }
+  if (spawnError) yield { type: "error", message: `Could not start the CLI: ${spawnError}` };
 }
 
 /* ------------------------------ registry ------------------------------ */

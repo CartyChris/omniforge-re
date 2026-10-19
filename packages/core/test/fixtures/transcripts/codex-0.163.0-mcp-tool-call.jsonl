@@ -1,0 +1,6 @@
+{"type":"thread.started","thread_id":"01a1519e-9d4e-7fd1-b573-4b0701c74576"}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_0","type":"mcp_tool_call","server":"omni","tool":"ping","arguments":{"msg":"hello"},"result":null,"error":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_0","type":"mcp_tool_call","server":"omni","tool":"ping","arguments":{"msg":"hello"},"result":{"content":[{"type":"text","text":"pong: hello"}],"structured_content":null},"error":null,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"The omni server answered: pong: hello."}}
+{"type":"turn.completed","usage":{"input_tokens":3600,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":90,"reasoning_output_tokens":0}}
