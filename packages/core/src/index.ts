@@ -37,6 +37,7 @@ export * from "./ai/skills-builtin.js";
 export * from "./ai/mcp.js";
 export * from "./ai/oauth.js";
 export * from "./ai/cliagents.js";
+export * from "./ai/retrieval.js";
 export * from "./repo/ref.js";
 export * from "./repo/license.js";
 export * from "./repo/rip.js";

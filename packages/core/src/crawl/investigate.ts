@@ -63,6 +63,14 @@ export interface InvestigateOptions {
 }
 
 const HTML_RE = /html|xhtml/i;
+
+/** Path template for crawl fairness: ids/numbers/hashes collapse, and pages below a shared parent count as one template. */
+export function urlTemplate(url: string): string {
+  let u: URL; try { u = new URL(url); } catch { return url; }
+  const segs = u.pathname.split("/").filter(Boolean).map((s) => (/^\d+$|^[0-9a-f]{8,}$|^[0-9a-f-]{32,36}$|\d{3,}/i.test(s) ? ":id" : s));
+  if (segs.length >= 2) segs[segs.length - 1] = "*";
+  return `${u.host}/${segs.join("/")}`;
+}
 const NON_PAGE_EXT = /\.(?:png|jpe?g|gif|webp|avif|svg|ico|bmp|css|js|mjs|map|json|xml|txt|woff2?|ttf|otf|eot|mp[34]|webm|mov|zip|gz|tgz|pdf|wasm|exe|dmg|apk|ipa|csv)(?:[?#]|$)/i;
 
 function assetKindFor(url: string, hint?: AssetKind): AssetKind {
@@ -164,6 +172,11 @@ export async function investigate(opts: InvestigateOptions): Promise<Investigati
   const claimed = new Set<string>(); // final URLs already fetched/in flight (redirect de-dup)
   const queue: { url: string; depth: number; from?: string; via: Page["discoveredVia"] }[] = [];
   let scheduled = 0;
+  // Page-budget fairness: many URLs of one template (/products/:slug, /blog/2024/…) must not use up maxPages before
+  // distinct pages (/pricing, /login, /docs) are reached. Over-quota URLs wait in `deferred` and fill whatever budget is left.
+  const perTemplate = new Map<string, number>();
+  const deferred: typeof queue = [];
+  const templateQuota = Math.max(4, Math.ceil(cfg.maxPages * 0.15));
   let sitemapUrls = 0;
   let maxPagesHit = false;
   let maxDepthHit = false;
@@ -283,10 +296,23 @@ export async function investigate(opts: InvestigateOptions): Promise<Investigati
     } catch {
       return false;
     }
+    const tk = urlTemplate(clean); const n = perTemplate.get(tk) ?? 0;
+    if (via !== "seed" && n >= templateQuota) {
+      if (deferred.length >= cfg.maxPages * 4) { maxPagesHit = true; return false; }
+      seen.add(clean); deferred.push({ url: clean, depth, from, via }); return true;
+    }
     seen.add(clean);
+    perTemplate.set(tk, n + 1);
     scheduled++;
     queue.push({ url: clean, depth, from, via });
     return true;
+  };
+  /** Called when the queue runs dry: spend leftover page budget on deferred same-template URLs, in discovery order. */
+  const releaseDeferred = () => {
+    let moved = 0;
+    while (deferred.length && scheduled < cfg.maxPages) { queue.push(deferred.shift()!); scheduled++; moved++; }
+    if (deferred.length) maxPagesHit = true;
+    return moved;
   };
 
   /* ---------- page processing ---------- */
@@ -409,7 +435,7 @@ export async function investigate(opts: InvestigateOptions): Promise<Investigati
       while (!opts.signal?.aborted) {
         const job = queue.shift();
         if (!job) {
-          if (inflight === 0) return;
+          if (inflight === 0 && !releaseDeferred()) return;
           await sleep(20, opts.signal).catch(() => {});
           continue;
         }
@@ -715,7 +741,7 @@ export async function investigate(opts: InvestigateOptions): Promise<Investigati
       pages, extracted, responseHeaders: headersByUrl, cookies, assets: [...assets.values()], assetBytes, technologies: inv.technologies,
       endpoints: inv.endpoints, js: jsFacts, css: cssText, files, sourceMaps, manifests, serviceWorkers: [...serviceWorkers], secretLikeInAssets: secretLike,
       robots: robotsInfo, sitemapUrls, blockedByRobots, failedFetches: failed, rendered, deobfuscation: deobf,
-      limits: { maxPagesHit, maxDepthHit, assetsOverLimit, queueRemaining: queue.length },
+      limits: { maxPagesHit, maxDepthHit, assetsOverLimit, queueRemaining: queue.length + deferred.length },
     };
     // recovered source → first-class source analysis (components, imports, env names, deps)
     let extraGraph: Investigation["graph"] | undefined;

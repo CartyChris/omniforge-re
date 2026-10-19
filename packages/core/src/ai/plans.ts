@@ -60,12 +60,14 @@ export const stackById = (id: string) => STACKS.find((s) => s.id === id) ?? STAC
 
 /* ---------------- briefs (untrusted-fenced) ---------------- */
 
+const urlPath = (u: string) => { try { return new URL(u).pathname; } catch { return u; } };
+
 export function siteBrief(inv: Investigation, max = 22_000): string {
   const lines: string[] = [];
   lines.push(`Target: ${inv.targets.map((t) => t.value).join(", ")} (${inv.pages.length} pages, ${inv.assets.length} assets)`);
   lines.push(`Technologies: ${inv.technologies.filter((t) => t.confidence >= 0.6).map((t) => `${t.name}${t.version ? " " + t.version : ""}`).join(", ") || "none confidently detected"}`);
   lines.push("\nPAGES");
-  for (const p of inv.pages.slice(0, 60)) lines.push(`- ${new URL(p.url).pathname} — “${p.title}” h:[${p.headings.slice(0, 4).map((h) => h.text).join(" | ")}] forms:${p.forms.length} links:${p.links.length}`);
+  for (const p of inv.pages.slice(0, 60)) lines.push(`- ${urlPath(p.url)} — “${p.title}” h:[${p.headings.slice(0, 4).map((h) => h.text).join(" | ")}] forms:${p.forms.length} links:${p.links.length}`);
   lines.push("\nFEATURES");
   for (const f of inv.features) lines.push(`- ${f.name} [${f.provenance}, ${Math.round(f.confidence * 100)}%]: ${f.description}`);
   if (inv.endpoints.length) { lines.push("\nENDPOINTS"); for (const e of inv.endpoints.slice(0, 40)) lines.push(`- ${e.kind} ${e.method ?? "?"} ${e.url}`); }
@@ -74,10 +76,33 @@ export function siteBrief(inv: Investigation, max = 22_000): string {
   if (withText.length) {
     lines.push("\nPAGE TEXT (what visitors read, as Markdown; reproduce real copy rather than inventing it)");
     let budget = 7_000;
-    for (const p of withText) { if (budget <= 0) break; const t = p.text!.slice(0, Math.min(1_400, budget)); budget -= t.length; lines.push(`--- ${new URL(p.url).pathname}${t.length < p.text!.length ? " (excerpt)" : ""}\n${t}`); }
+    for (const p of withText) { if (budget <= 0) break; const t = p.text!.slice(0, Math.min(1_400, budget)); budget -= t.length; lines.push(`--- ${urlPath(p.url)}${t.length < p.text!.length ? " (excerpt)" : ""}\n${t}`); }
   }
+  if (inv.files.length) lines.push(sourceSection(inv, Math.min(9_000, Math.max(2_000, max - lines.join("\n").length - 1_500))));
   if (inv.limitations.length) lines.push("\nKNOWN LIMITS\n" + inv.limitations.map((l) => `- ${l}`).join("\n"));
   return untrusted("site-analysis", lines.join("\n"), max);
+}
+
+/** Files that explain a codebase fastest: docs, manifests, entry points, routes, schemas — before leaf modules. */
+const KEY_FILE = [/^readme(\.\w+)?$/i, /^(package\.json|pyproject\.toml|requirements\.txt|go\.mod|cargo\.toml|pom\.xml|build\.gradle(\.kts)?|gemfile|composer\.json|.*\.csproj)$/i,
+  /(^|\/)(main|index|app|server|cli|program|manage)\.\w+$/i, /(^|\/)(routes?|router|urls|api|schema|models?)(\/|\.)/i, /\.(prisma|graphql|gql|proto|sql)$/i, /(openapi|swagger)\.(json|ya?ml)$/i];
+const keyRank = (p: string) => { const i = KEY_FILE.findIndex((r) => r.test(p) || r.test(p.split("/").pop()!)); return i < 0 ? KEY_FILE.length : i; };
+
+/** Repo/folder/archive investigations: dependencies, the file tree and excerpts of the files that define the app. */
+function sourceSection(inv: Investigation, budget: number): string {
+  const out: string[] = [];
+  if (inv.dependencies.length) out.push(`\nDEPENDENCIES\n${inv.dependencies.filter((d) => !d.dev).slice(0, 60).map((d) => `${d.name}${d.version ? "@" + d.version : ""}`).join(", ")}`);
+  const tree = inv.files.slice(0, 200).map((f) => `${f.path} (${f.language}, ${f.lines} lines${f.provenance !== "recovered" ? ", " + f.provenance : ""})`);
+  out.push(`\nSOURCE FILES (${inv.files.length}${inv.files.length > 200 ? ", first 200" : ""})\n${tree.join("\n")}`);
+  const key = inv.files.filter((f) => f.content).map((f, i) => ({ f, r: keyRank(f.path), i })).sort((a, b) => a.r - b.r || a.f.path.split("/").length - b.f.path.split("/").length || a.i - b.i);
+  let left = budget - out.join("\n").length; const ex: string[] = [];
+  for (const { f } of key) {
+    if (left < 400) break;
+    const take = Math.min(f.content!.length, 2_400, left - 100); const t = f.content!.slice(0, take);
+    ex.push(`--- ${f.path}${take < f.content!.length ? " (excerpt)" : ""}\n${t}`); left -= t.length + f.path.length + 16;
+  }
+  if (ex.length) out.push(`\nKEY SOURCE (exact files from the input, in order of importance)\n${ex.join("\n")}`);
+  return out.join("\n");
 }
 
 export function featureBrief(inv: Investigation, f: Feature, max = 30_000): string {

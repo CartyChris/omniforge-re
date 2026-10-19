@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { Bot, Send, Sparkles, StopCircle, User } from "lucide-react";
 import { toast } from "sonner";
-import { SECURITY_PREAMBLE, siteBrief, uid, untrusted, type ChatMessage, type Investigation } from "@omniforge/core";
+import { SECURITY_PREAMBLE, relevantContext, siteBrief, uid, untrusted, type ChatMessage, type Investigation } from "@omniforge/core";
 import { useApp } from "@/lib/store";
 import { ask, pickModel } from "@/lib/ai";
 import { cn } from "@/lib/utils";
@@ -33,10 +33,13 @@ export function AskTab({ inv }: { inv: Investigation }) {
     q = q.trim(); if (!q || busy) return;
     setText(""); setBusy(true); setStreaming(""); push({ id: uid("m"), role: "user", content: q, at: new Date().toISOString() });
     const ctrl = new AbortController(); abort.current = ctrl;
-    const evList = inv.evidence.slice(0, 120).map((e) => `${e.id} [${e.kind}] ${e.summary}`).join("\n");
     const history = msgs.slice(-6).map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n");
+    // Overview + the passages that match this question (BM25 over evidence, page copy, source, endpoints, features), then a short ledger for citations.
+    const found = relevantContext(inv, q, { budget: 16_000, history: msgs.filter((m) => m.role === "user").slice(-2).map((m) => m.content).join(" ") });
+    const cited = new Set(found.hits.filter((h) => h.kind === "evidence").map((h) => h.id));
+    const evList = inv.evidence.filter((e) => !cited.has(e.id)).slice(0, 60).map((e) => `${e.id} [${e.kind}] ${e.summary}`).join("\n");
     try {
-      const r = await ask("research", `${siteBrief(inv)}\n\n${untrusted("evidence-ledger", evList, 20_000)}\n\n${history ? `Earlier conversation:\n${history}\n\n` : ""}Question: ${q}`, {
+      const r = await ask("research", `${siteBrief(inv, 12_000)}\n\n${found.text ? `Passages retrieved for this question:\n${found.text}\n\n` : ""}${untrusted("evidence-ledger", evList, 8_000)}\n\n${history ? `Earlier conversation:\n${history}\n\n` : ""}Question: ${q}`, {
         system: `${SECURITY_PREAMBLE}\n\nYou are the OmniForge investigator. Answer ONLY from the analysis provided. Cite supporting evidence ids (like ev_abc123) inline. Separate what was observed/recovered from what you infer, and say plainly when the evidence doesn't answer the question. Be concise.`,
         signal: ctrl.signal, onText: setStreaming,
       });

@@ -46,7 +46,9 @@ jobs:
   # The REAL coding CLIs (pinned) driven through OmniForge's agent harness against a scripted local model: a CLI release that changes
   # its flags, events or what it loads from a project fails here instead of in the user's run. No vendor accounts are used.
   agent-clis:
-    runs-on: ubuntu-latest
+    # Codex sandboxes its tools with Linux user namespaces, which Ubuntu 24.04+ runner images restrict (its file change
+    # fails there, see WORKLOG); 22.04 has no such restriction. macOS (what ships) uses Seatbelt instead.
+    runs-on: ubuntu-22.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4

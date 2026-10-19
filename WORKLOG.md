@@ -60,5 +60,11 @@ Decisions, what was tried, what failed. Newest last. See FEATURES.md for the sta
 - OWASP Noir (S5): the release asset download was blocked here, and apt's Crystal 1.11 cannot build noir 1.4.0 (`wait_group`). Built it from source with Crystal 1.19.1 instead. The fixture's JSON output was recorded from that binary, and the parser was written against the recording. Only `scan . -f json` is ever passed, never its AI, probe, send-to or webhook options. Routes are merged with the tree-sitter routes using a normalised key (`:id`/`{id}`/`<id>` collapse).
 - Skipped: jadx/Apktool integration. The delegated build was stopped by a safety check, and I did not retry it. The tools are still detected and reported, but not driven.
 
+- Ingestion/output audit (S6), three fixes, each with a test that failed under a mutation:
+  - Ask AI context ignored the question. It always sent the first 120 evidence items and the 8 shallowest pages, so an answer at item 250, deep in a page, or in a source file never reached the model. `ai/retrieval.ts` adds BM25 over evidence, page windows, file windows (labelled `file:line`), endpoints, features and findings. The labelled set started too easy: ranking by document order still passed, because only the answers matched. I added distractors that share the questions' words, and now that mutation fails 3 tests.
+  - Repo rebuild briefs carried no code: `siteBrief` was page-centric. It now includes the dependencies, the file tree and excerpts of key files in importance order.
+  - The page budget was first-come: a home page listing 80 product links before /pricing and /login used up `maxPages` on products. It now applies a per-template quota and defers over-quota URLs instead of dropping them. Mutation: quota off → the distinct pages are missing.
+- Codex on the GitHub Ubuntu runner: the new diagnostics show `File change failed` from Codex's own tool, so the harness reported it correctly as a failed tool. The `agent-clis` job now runs on ubuntu-22.04, which lacks 24.04's user-namespace restriction, to confirm the cause.
+
 ## Known gaps / not done
 See FEATURES.md rows marked N or P. Blocked by environment: Vercel deploy to the user's account (connector bound to another team); Apple signing (no certificate); live cloud-model and OSV.dev calls (no keys / egress).
