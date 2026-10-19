@@ -22,3 +22,4 @@ apps/desktop/src-tauri/icons/source.png
 research_notes/
 reports/
 apps/desktop/src-tauri/resources/tree-sitter/
+.claude/worktrees/

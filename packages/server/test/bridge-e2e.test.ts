@@ -31,7 +31,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 beforeAll(async () => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), "omni-e2e-"));
   process.env.OMNIFORGE_HOME = path.join(tmp, "home"); process.env.REA_BIN = path.resolve(__dirname, "../node_modules/.bin/rea");
-  bridge = await startBridge({ jobsDir: path.join(tmp, "jobs"), reaDir: path.join(tmp, "rea"), agentCliPath: path.join(__dirname, "fixtures/fake-claude.mjs") });
+  bridge = await startBridge({ jobsDir: path.join(tmp, "jobs"), reaDir: path.join(tmp, "rea"), agentCliPath: path.join(__dirname, "fixtures/fake-claude.mjs"), skillsHome: path.join(tmp, "skills-home") });
+  fs.mkdirSync(path.join(tmp, "skills-home/.claude/skills/house-style"), { recursive: true }); fs.writeFileSync(path.join(tmp, "skills-home/.claude/skills/house-style/SKILL.md"), "---\nname: house-style\ndescription: Our house style.\n---\nUse named exports.\n");
   fx = createFixture(); fxBase = await fx.listen();
 }, 30_000);
 afterAll(async () => { await bridge.close(); await fx.close(); fs.rmSync(tmp, { recursive: true, force: true }); delete process.env.OMNIFORGE_HOME; delete process.env.REA_BIN; });
@@ -115,6 +116,11 @@ describe("pairing → approval → scoped access", () => {
 });
 
 describe("privileged capabilities through the bridge (desktop UI token)", () => {
+  it("lists the user's Agent Skills only to the desktop UI", async () => {
+    expect((await call("GET", "/bridge/skills")).status).toBe(401);
+    const r = await ui("GET", "/bridge/skills"); expect(r.status).toBe(200);
+    expect(r.json.skills.map((s: { name: string; origin: string }) => `${s.origin}:${s.name}`)).toEqual(["Claude Code:house-style"]);
+  });
   let rootId: string;
   beforeAll(async () => { rootId = (await ui("POST", "/bridge/roots", { path: path.resolve(__dirname, "../../../fixtures"), writable: false })).json.id; });
 

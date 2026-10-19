@@ -25,9 +25,10 @@ import { verifyUrls } from "./verify.js";
 import { AgentRuns, applyChanges, createShadow, listChanges, readSides, runClaudeAgent } from "./agentrun.js";
 import { backupFiles, record as recordChange } from "./changelog.js";
 import type { Deobfuscator } from "@omniforge/core";
+import { scanSkills } from "./skills.js";
 import { nodeStructureExtractor } from "@omniforge/structure/node";
 
-export interface BridgeOptions { port?: number; uiToken?: string; version?: string; allowedOrigins?: string[]; jobsDir?: string; reaDir?: string; /** tests only: drive this executable as "Claude Code" instead of the installed one */ agentCliPath?: string }
+export interface BridgeOptions { port?: number; uiToken?: string; version?: string; allowedOrigins?: string[]; jobsDir?: string; reaDir?: string; /** tests only: drive this executable as "Claude Code" instead of the installed one */ agentCliPath?: string; /** tests only: home folder to scan for Agent Skills */ skillsHome?: string }
 export interface Bridge { url: string; port: number; auth: BridgeAuth; roots: Roots; jobs: JobManager; close(): Promise<void> }
 
 const ndjson = (lines: Iterable<string>) => { const enc = new TextEncoder(); const it = lines[Symbol.iterator](); return new Response(new ReadableStream<Uint8Array>({ pull(c) { const n = it.next(); if (n.done) c.close(); else c.enqueue(enc.encode(n.value)); } }), { headers: { "content-type": "application/x-ndjson", "cache-control": "no-store" } }); };
@@ -235,6 +236,7 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
       if (wantsRender) need(p, "render");
       return analyzeHandler(req, { mode: "local", renderer: wantsRender ? getRenderer() : undefined, deobfuscator: body?.config?.deobfuscate ? getDeobfuscator() : undefined });
     }
+    if (is("GET", "/bridge/skills")) { ui(); return json(scanSkills(o.skillsHome)); }
     if (is("GET", "/bridge/changes")) { ui(); return json({ changes: readChanges(), backups: listBackups() }); }
     if (is("POST", "/bridge/restore")) { ui(); const b = await readJson(req, 2000); return json({ restored: restoreBackup(String(b.dir)) }); }
     return err("Not found", 404);
