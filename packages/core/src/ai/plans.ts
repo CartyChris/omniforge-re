@@ -147,7 +147,7 @@ export function buildRebuildPlan(o: RebuildOptions): AgentTask[] {
   const featureTasks = features.map((f) =>
     task({
       role: "development", objective: `Implement the “${f.name}” feature according to SPEC.md and the evidence below. Write complete files and wire it into the app.`,
-      dependsOn: [scaffold.id], inputs: [featureBrief(o.inv, f), guide], acceptance: [`Feature “${f.name}” is reachable from the UI`, "No placeholder or TODO stubs"],
+      dependsOn: [scaffold.id], inputs: [featureBrief(o.inv, f), guide], acceptance: ["writes_files", `Feature “${f.name}” is reachable from the UI`, "No placeholder or TODO stubs"],
     }),
   );
   const ui = task({ role: "uiux", objective: `Apply the design tokens and responsive layout from the analysis; ensure keyboard accessibility, focus states and mobile layout with no horizontal overflow.`, dependsOn: [scaffold.id, ...featureTasks.map((t) => t.id)], inputs: [brief] });
