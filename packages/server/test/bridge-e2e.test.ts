@@ -296,13 +296,17 @@ describe("privileged capabilities through the bridge (desktop UI token)", () => 
   }, 60_000);
 
   it("forwards to local model servers only (loopback + known ports), so a hosted page never calls localhost itself", async () => {
-    const mock = http.createServer((q, r) => { let b = ""; q.on("data", (c) => (b += c)); q.on("end", () => { r.writeHead(200, { "content-type": "application/json" }); r.end(JSON.stringify({ echoed: b, auth: q.headers.authorization ?? null })); }); }).listen(0, "127.0.0.1");
+    const mock = http.createServer((q, r) => { const ch: Buffer[] = []; q.on("data", (c) => ch.push(c)); q.on("end", () => { const raw = Buffer.concat(ch); r.writeHead(200, { "content-type": "application/json" }); r.end(JSON.stringify({ echoed: raw.toString(), hex: raw.toString("hex"), auth: q.headers.authorization ?? null })); }); }).listen(0, "127.0.0.1");
     await new Promise((r) => mock.once("listening", r));
     const port = (mock.address() as any).port;
     try {
       process.env.OMNIFORGE_LOCAL_PORTS = String(port);
       const ok = await ui("POST", "/bridge/forward", { url: `http://127.0.0.1:${port}/api/chat`, method: "POST", headers: { "content-type": "application/json", authorization: "Bearer k", cookie: "drop-me" }, body: '{"hi":1}' });
-      expect(ok.json).toEqual({ echoed: '{"hi":1}', auth: "Bearer k" });
+      expect(ok.json).toMatchObject({ echoed: '{"hi":1}', auth: "Bearer k" });
+      // bytes (e.g. a Netlify ZIP) travel as bodyBase64 and arrive byte-for-byte
+      const bin = await ui("POST", "/bridge/forward", { url: `http://127.0.0.1:${port}/zip`, method: "POST", headers: { "content-type": "application/zip" }, bodyBase64: Buffer.from([0x50, 0x4b, 0, 255, 13, 10]).toString("base64") });
+      expect(bin.json.hex).toBe("504b00ff0d0a");
+      expect((await ui("POST", "/bridge/forward", { url: `http://127.0.0.1:${port}/zip`, method: "POST", bodyBase64: "%%%" })).status).toBe(400);
       for (const url of ["http://127.0.0.1:22/", "http://localhost:3306/", "http://169.254.169.254/", "https://evil.example/x", "http://10.0.0.5:11434/", "https://localhost:11434/", "http://127.0.0.1:11434/../etc"]) expect((await ui("POST", "/bridge/forward", { url })).status, url).toBeGreaterThanOrEqual(400);
       expect((await ui("POST", "/bridge/forward", { url: "https://api.openai.com/v1/models" })).status).not.toBe(403); // allow-listed API host is permitted (may 401/502 offline)
       expect((await call("POST", "/bridge/forward", { origin: WEB, body: { url: `http://127.0.0.1:${port}/` } })).status).toBe(401);

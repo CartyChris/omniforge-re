@@ -1,4 +1,6 @@
 /** Client for the OmniForge desktop bridge (pairing, scoped calls, SSE). */
+import { forwardBody } from "./forward-body";
+
 export interface BridgeConn { url: string; token: string; kind: "ui" | "session"; scopes?: string[]; expiresAt?: number; version?: string }
 
 export class BridgeError extends Error { constructor(public status: number, message: string) { super(message); this.name = "BridgeError"; } }
@@ -48,7 +50,7 @@ export class Bridge {
     // used by smartFetch to forward model-server traffic
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     const headers: Record<string, string> = {}; new Headers(init?.headers).forEach((v, k) => (headers[k] = v));
-    return this.raw("POST", "/bridge/forward", { url, method: init?.method ?? "GET", headers, body: typeof init?.body === "string" ? init.body : undefined }, init?.signal ?? undefined).catch((e: BridgeError) => new Response(JSON.stringify({ error: e.message }), { status: e.status || 502, headers: { "content-type": "application/json" } }));
+    return this.raw("POST", "/bridge/forward", { url, method: init?.method ?? "GET", headers, ...forwardBody(init?.body) }, init?.signal ?? undefined).catch((e: BridgeError) => new Response(JSON.stringify({ error: e.message }), { status: e.status || 502, headers: { "content-type": "application/json" } }));
   };
 }
 

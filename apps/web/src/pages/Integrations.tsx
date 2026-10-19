@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Bot, CheckCircle2, ExternalLink, Github, HardDrive, Link2, Loader2, PlugZap, RefreshCw, RotateCcw, ShieldAlert, Triangle, Unplug, Wrench, XCircle } from "lucide-react";
-import { github, vercel } from "@omniforge/core";
+import { Bot, CheckCircle2, Cloud, ExternalLink, Github, Globe, HardDrive, Link2, Loader2, PlugZap, RefreshCw, RotateCcw, ShieldAlert, Triangle, Unplug, Wrench, XCircle } from "lucide-react";
+import { cloudflare, github, netlify, vercel } from "@omniforge/core";
 import { isDesktop, useApp } from "@/lib/store";
 import { pair, probe } from "@/lib/bridge";
 import { vault } from "@/lib/vault";
@@ -11,6 +11,7 @@ import { audit } from "@/lib/audit";
 import { download } from "@/lib/utils";
 import { Link } from "react-router";
 import { GH_KEY, VC_KEY, appFetch, vcOpts } from "@/lib/github";
+import { CF_ACCOUNT_KEY, CF_KEY, NL_KEY } from "@/lib/static-deploy";
 import { requestApproval } from "@/lib/approvals";
 import { ago, cn } from "@/lib/utils";
 import { Badge, Button, Card, CardBody, CardHeader, CardTitle, CopyButton, Field, Input, SectionTitle, StatusDot } from "@/components/ui/primitives";
@@ -21,8 +22,8 @@ const releases = "https://github.com/CartyChris/omniforge-re/releases";
 export default function Integrations() {
   return (
     <div className="mx-auto max-w-5xl space-y-5 p-4 sm:p-6">
-      <SectionTitle title="Integrations" sub="Connect GitHub and Vercel, pair the desktop app, and see which tools and AI CLIs OmniForge found on your Mac." />
-      <div className="grid gap-5 lg:grid-cols-2"><GitHubCard /><VercelCard /></div>
+      <SectionTitle title="Integrations" sub="Connect GitHub, Vercel, Netlify and Cloudflare Pages, pair the desktop app, and see which tools and AI CLIs OmniForge found on your Mac." />
+      <div className="grid gap-5 lg:grid-cols-2"><GitHubCard /><VercelCard /><NetlifyCard /><CloudflareCard /></div>
       <SetupCard />
       <Companion />
       <McpServerCard />
@@ -74,6 +75,51 @@ function VercelCard() {
         {has ? <div className="space-y-3">{teams.length > 0 && <Field label="Deploy under"><Select value={settings.vercel.teamId ?? "personal"} onValueChange={(v) => patchSettings({ vercel: { teamId: v === "personal" ? undefined : v } })} options={[{ value: "personal", label: "Personal account" }, ...teams.map((t) => ({ value: t.id, label: t.name }))]} /></Field>}<Button variant="secondary" icon={<Unplug className="size-4" />} onClick={async () => { await vault.del(VC_KEY); patchSettings({ vercel: {} }); await refresh(); toast.success("Vercel disconnected"); }}>Disconnect</Button></div>
           : <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); void connect(); }}><Field label="Access token" hint={<><a className="text-accent underline" target="_blank" rel="noopener noreferrer" href="https://vercel.com/account/tokens">Create a token</a> with the narrowest scope that works.</>}><Input type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder="vercel token" /></Field><Button type="submit" variant="primary" loading={busy} disabled={token.trim().length < 20}>Verify & save</Button></form>}
         <p className="text-xs text-faint">Stored encrypted on this device; sent only to api.vercel.com.</p>
+      </CardBody></Card>
+  );
+}
+
+function NetlifyCard() {
+  const { has, refresh } = useToken(NL_KEY);
+  const [token, setToken] = useState(""); const [busy, setBusy] = useState(false);
+  const connect = async () => {
+    setBusy(true);
+    try { const me = await netlify.whoami({ token: token.trim(), fetch: appFetch() }); await vault.set(NL_KEY, token.trim()); setToken(""); await refresh(); toast.success(`Netlify connected${me.email ? ` (${me.email})` : ""}`); }
+    catch (e) { toast.error(/\b(401|403)\b/.test((e as Error).message) ? "Netlify rejected that token." : (e as Error).message); } finally { setBusy(false); }
+  };
+  return (
+    <Card><CardHeader><CardTitle className="flex items-center gap-2"><Globe className="size-4" />Netlify</CardTitle>{has ? <Badge tone="ok" dot>connected</Badge> : <Badge>not connected</Badge>}</CardHeader>
+      <CardBody className="space-y-3">
+        <p className="text-[13px] text-muted">Deploy a static or already-built site (uploaded as a ZIP — no build step runs). It only counts as live after its URL answers.</p>
+        {has ? <Button variant="secondary" icon={<Unplug className="size-4" />} onClick={async () => { await vault.del(NL_KEY); await refresh(); toast.success("Netlify disconnected"); }}>Disconnect</Button>
+          : <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); void connect(); }}><Field label="Netlify token" hint={<><a className="text-accent underline" target="_blank" rel="noopener noreferrer" href="https://app.netlify.com/user/applications#personal-access-tokens">Create a token</a> (User settings → Applications) with a short expiry.</>}><Input type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder="nfp_…" /></Field><Button type="submit" variant="primary" loading={busy} disabled={token.trim().length < 20}>Verify & save</Button></form>}
+        <p className="text-xs text-faint">Stored encrypted on this device; sent only to api.netlify.com (via the OmniForge forwarder or the desktop app).</p>
+      </CardBody></Card>
+  );
+}
+
+function CloudflareCard() {
+  const { has, refresh } = useToken(CF_KEY);
+  const [token, setToken] = useState(""); const [account, setAccount] = useState(""); const [busy, setBusy] = useState(false);
+  const connect = async () => {
+    setBusy(true);
+    try {
+      const o = { token: token.trim(), accountId: account.trim(), fetch: appFetch() };
+      const p = await cloudflare.listProjects(o); // proves the token works for THIS account with Pages access
+      await vault.set(CF_KEY, o.token); await vault.set(CF_ACCOUNT_KEY, o.accountId);
+      setToken(""); setAccount(""); await refresh(); toast.success(`Cloudflare connected (${p.length} Pages project${p.length === 1 ? "" : "s"} visible)`);
+    } catch (e) { toast.error(/\b(401|403)\b/.test((e as Error).message) ? "Cloudflare rejected that token for this account." : (e as Error).message); } finally { setBusy(false); }
+  };
+  return (
+    <Card><CardHeader><CardTitle className="flex items-center gap-2"><Cloud className="size-4" />Cloudflare Pages</CardTitle>{has ? <Badge tone="ok" dot>connected</Badge> : <Badge>not connected</Badge>}</CardHeader>
+      <CardBody className="space-y-3">
+        <p className="text-[13px] text-muted">Direct Upload of a static or already-built site (no build step, no Pages Functions). It only counts as live after its URL answers.</p>
+        {has ? <Button variant="secondary" icon={<Unplug className="size-4" />} onClick={async () => { await vault.del(CF_KEY); await vault.del(CF_ACCOUNT_KEY); await refresh(); toast.success("Cloudflare disconnected"); }}>Disconnect</Button>
+          : <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); void connect(); }}>
+            <Field label="Cloudflare API token" hint={<><a className="text-accent underline" target="_blank" rel="noopener noreferrer" href="https://dash.cloudflare.com/profile/api-tokens">Create a token</a> with only <b>Account → Cloudflare Pages → Edit</b>.</>}><Input type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder="API token" /></Field>
+            <Field label="Cloudflare account ID" hint="On the dashboard's account overview (32 hex characters)."><Input autoComplete="off" spellCheck={false} value={account} onChange={(e) => setAccount(e.target.value)} placeholder="0123456789abcdef0123456789abcdef" /></Field>
+            <Button type="submit" variant="primary" loading={busy} disabled={token.trim().length < 20 || !/^[0-9a-f]{32}$/i.test(account.trim())}>Verify & save</Button></form>}
+        <p className="text-xs text-faint">Stored encrypted on this device; sent only to api.cloudflare.com (via the OmniForge forwarder or the desktop app).</p>
       </CardBody></Card>
   );
 }
