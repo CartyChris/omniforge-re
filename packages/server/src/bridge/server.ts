@@ -28,12 +28,13 @@ import type { Deobfuscator } from "@omniforge/core";
 import { scanSkills } from "./skills.js";
 import { McpHub, specFrom } from "./mcp.js";
 import { nodeNet } from "../net.js";
+import { mergeNoir, noirBinary, runNoir } from "./noir.js";
 import { exchangeOpenRouterCode, openRouterAuthUrl, pkcePair } from "@omniforge/core";
 import { execFile } from "node:child_process";
 import crypto from "node:crypto";
 import { nodeStructureExtractor } from "@omniforge/structure/node";
 
-export interface BridgeOptions { port?: number; uiToken?: string; version?: string; allowedOrigins?: string[]; jobsDir?: string; reaDir?: string; /** tests only: drive this executable as "Claude Code" instead of the installed one */ agentCliPath?: string; /** tests only: drive these executables as the named agent CLIs */ agentCliPaths?: Record<string, string>; /** tests only: home folder to scan for Agent Skills */ skillsHome?: string; /** tests only: how sign-in pages are opened and codes exchanged */ openUrl?: (url: string) => void; oauthFetch?: typeof fetch }
+export interface BridgeOptions { port?: number; uiToken?: string; version?: string; allowedOrigins?: string[]; jobsDir?: string; reaDir?: string; /** tests only: drive this executable as "Claude Code" instead of the installed one */ agentCliPath?: string; /** tests only: drive these executables as the named agent CLIs */ agentCliPaths?: Record<string, string>; /** tests only: home folder to scan for Agent Skills */ skillsHome?: string; /** tests only: the OWASP Noir binary */ noirBin?: string; /** tests only: how sign-in pages are opened and codes exchanged */ openUrl?: (url: string) => void; oauthFetch?: typeof fetch }
 export interface Bridge { url: string; port: number; auth: BridgeAuth; roots: Roots; jobs: JobManager; close(): Promise<void> }
 
 const ndjson = (lines: Iterable<string>) => { const enc = new TextEncoder(); const it = lines[Symbol.iterator](); return new Response(new ReadableStream<Uint8Array>({ pull(c) { const n = it.next(); if (n.done) c.close(); else c.enqueue(enc.encode(n.value)); } }), { headers: { "content-type": "application/x-ndjson", "cache-control": "no-store" } }); };
@@ -125,6 +126,8 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
       const { files, skipped } = await snapshotFolder(roots, b.root, { sub: b.sub });
       const inv = await investigateSource(root(b.root).label, files, { kind: "folder", origin: `local:${root(b.root).label}`, structure });
       inv.limitations.push(...skipped.slice(0, 20).map((s) => `${s.path}: ${s.reason}`));
+      // OWASP Noir (optional, installed by the user): extra endpoint discovery across many frameworks, merged without duplicates
+      if (b.noir !== false) { const bin = o.noirBin ?? noirBinary(); const abs = await roots.resolve(b.root, b.sub ?? ".", { mustExist: true }); mergeNoir(inv, bin ? await runNoir(abs, { bin }) : { ok: false, endpoints: [], errors: [], ms: 0, error: "not installed" }); }
       return json(inv);
     }
     if (is("POST", "/bridge/inspect-package")) {

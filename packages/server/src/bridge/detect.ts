@@ -41,6 +41,7 @@ const TOOLS: ToolDef[] = [
   { id: "hopper", name: "Hopper Disassembler", category: "reverse", bins: ["hopper"], platforms: ["darwin"], appBundles: ["/Applications/Hopper Disassembler v4.app", "/Applications/Hopper Disassembler.app"], install: "Download from hopperapp.com (commercial licence)" },
   { id: "semgrep", name: "Semgrep", category: "analysis", bins: ["semgrep"], versionArgs: ["--version"], install: "brew install semgrep" },
   { id: "ast-grep", name: "ast-grep", category: "analysis", bins: ["ast-grep", "sg"], versionArgs: ["--version"], identity: /ast-grep/i, install: "brew install ast-grep" },
+  { id: "noir", name: "OWASP Noir (endpoint discovery)", category: "analysis", bins: ["noir"], versionArgs: ["--version"], install: "brew install noir" },
   { id: "osv-scanner", name: "OSV-Scanner", category: "analysis", bins: ["osv-scanner"], versionArgs: ["--version"], install: "brew install osv-scanner" },
   { id: "repomix", name: "Repomix", category: "analysis", bins: ["repomix"], versionArgs: ["--version"], install: "npm i -g repomix" },
   { id: "rea", name: "Reverse Engineer Anything (rea)", category: "reverse", bins: ["rea"], versionArgs: ["--version"], install: "npm install --global rea-agents" },

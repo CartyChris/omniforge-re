@@ -32,7 +32,8 @@ async function go(o: Omit<AgentCliRunOptions, "prompt">) { const ev: AgentEvent[
 async function expectWrote(ev: AgentEvent[]) {
   expect(ev.at(-1), JSON.stringify(ev.slice(-3))).toMatchObject({ type: "result", ok: true });
   expect(ev.some((e) => e.type === "tool" && /hello\.txt/.test(e.summary))).toBe(true);
-  expect((await listChanges(shadow!)).map((c) => `${c.status}:${c.path}`)).toEqual(["added:hello.txt"]);
+  const tools = JSON.stringify(ev.filter((e) => e.type === "tool" || e.type === "tool_result"));
+  expect((await listChanges(shadow!)).map((c) => `${c.status}:${c.path}`), tools).toEqual(["added:hello.txt"]);
   expect((await readSides(shadow!, "hello.txt")).next?.trim()).toBe("hi there");
   expect(fs.existsSync(path.join(proj, "hello.txt"))).toBe(false);
   expect(fs.readdirSync(canaries)).toEqual([]); // nothing planted in the project ran
