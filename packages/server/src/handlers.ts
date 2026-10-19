@@ -148,6 +148,7 @@ export async function repoFilesHandler(req: Request, o: HandlerOptions): Promise
 export const FORWARD_ALLOW = new Set([
   "api.anthropic.com", "api.openai.com", "generativelanguage.googleapis.com", "api.x.ai", "api.moonshot.ai", "api.moonshot.cn", "openrouter.ai",
   "api.vercel.com", "api.github.com", "api.osv.dev", "api.mistral.ai", "api.groq.com", "api.together.xyz", "api.deepseek.com",
+  "api.fireworks.ai", "api.cerebras.ai", "api.perplexity.ai", "router.huggingface.co", "integrate.api.nvidia.com", "ai-gateway.vercel.sh", "api.z.ai", "dashscope-intl.aliyuncs.com",
 ]);
 const FORWARD_HEADERS = ["authorization", "x-api-key", "anthropic-version", "anthropic-beta", "anthropic-dangerous-direct-browser-access", "content-type", "accept", "x-goog-api-key", "openai-organization", "http-referer", "x-title", "x-github-api-version"];
 

@@ -214,3 +214,42 @@ test("desktop UI: 'with Claude Code' hands an analysed rebuild to the Agent CLI 
   expect(started).toBe(false);
   noErrors(errors);
 });
+
+test("desktop UI: an MCP server's tools reach OmniForge's own Build agents — approved once, pinned, results fenced as untrusted", async ({ page }) => {
+  const errors = await asDesktop(page);
+  const MINI = new URL("../../../packages/server/test/fixtures/mini-mcp.mjs", import.meta.url).pathname;
+  // in the desktop app model calls go through the engine, so observe the MCP calls the agent makes (request and the engine's real reply)
+  const calls: { body: any; reply: any }[] = [];
+  await page.route("**/bridge/mcp/call", async (route) => { if (route.request().method() === "OPTIONS") return route.continue(); const res = await route.fetch(); const reply = await res.json(); calls.push({ body: JSON.parse(route.request().postData() ?? "{}"), reply }); await route.fulfill({ response: res, json: reply }); });
+  await page.goto("/#/studio?tab=skills");
+  await expect(page.getByText("Desktop connected").or(page.getByTestId("mcp-agent-servers"))).toBeVisible({ timeout: 20_000 });
+  await page.getByLabel("New MCP server name").fill("mini");
+  await page.getByLabel("New MCP server command or address").fill(`${process.execPath} ${MINI} codeword-e2e`);
+  await page.getByRole("button", { name: "Add server" }).click();
+  const row = page.getByTestId("mcp-agent-servers").locator("li", { hasText: "mini" });
+  await row.getByRole("button", { name: "Connect" }).click();
+  await expect(page.getByTestId("mcp-result-mini")).toContainText("1 tool(s): lookup"); await expect(page.getByTestId("mcp-result-mini")).toContainText("not approved yet");
+  await page.getByRole("switch", { name: "Use mini in Build agents" }).click();
+
+  await page.goto("/#/studio?tab=build");
+  await page.getByRole("radio", { name: /Build from scratch/ }).click();
+  await page.getByLabel(/Describe the app/).fill("A tiny notes app");
+  await page.getByRole("button", { name: "Generate plan" }).click();
+  await page.getByRole("button", { name: "Run plan" }).click();
+  const dlg = page.getByRole("dialog");
+  await expect(dlg).toContainText("Let Build agents use the MCP server “mini”?", { timeout: 30_000 }); await expect(dlg).toContainText("codeword-e2e"); await expect(dlg).toContainText("not sandboxed");
+  await dlg.getByRole("button", { name: "Allow once" }).click();
+  await expect.poll(() => calls.length, { timeout: 60_000 }).toBeGreaterThan(0);
+  expect(calls[0]!.body).toMatchObject({ server: { name: "mini" }, tool: "lookup" }); expect(calls[0]!.reply).toMatchObject({ text: "codeword-e2e", isError: false });
+  // the agent's log shows the call and its (fenced) result
+  await page.getByText(/\d+\/\d+ done/).waitFor({ timeout: 90_000 });
+  await page.getByRole("button", { name: "Details" }).first().click();
+  await expect(page.getByText(/tool mcp__mini__lookup\(\{\}\) → <<<UNTRUSTED_DATA label="mcp:mini\/lookup"/)).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("button", { name: "Stop" }).click().catch(() => {});
+  // pinned: connecting again shows the tools as approved
+  await page.goto("/#/studio?tab=skills");
+  await page.getByTestId("mcp-agent-servers").locator("li", { hasText: "mini" }).getByRole("button", { name: "Connect" }).click();
+  await expect(page.getByTestId("mcp-result-mini")).toContainText("approved");
+  await expect(page.getByTestId("mcp-result-mini")).not.toContainText("not approved");
+  noErrors(errors);
+});

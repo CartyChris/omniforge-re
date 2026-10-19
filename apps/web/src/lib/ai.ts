@@ -1,6 +1,7 @@
 /** Builds live providers from saved configs + vaulted keys; discovers models; bridges CLIs. */
 import { allModels, buildEditPrompt, collect, parseEditReply, type EditProposal, type EditRejection, type EditRequest, configFromPreset, createProvider, executeGraph, governed, memoryFS, UsageMeter, type AgentTask, type ChatEvent, type ChatRequest, type ModelInfo, type Provider, type ProviderConfig, type ProviderStatus, type RunContext, type WorkspaceFS, type CommandRunner, chooseModel, type TaskKind } from "@omniforge/core";
 import { enabledSkills } from "./skills";
+import { mcpAgentTools } from "./mcp";
 import { useApp } from "./store";
 import { vault, VaultLocked } from "./vault";
 import { smartFetch } from "./net";
@@ -129,7 +130,7 @@ export async function runPlan(tasks: AgentTask[], o: { onUpdate: (t: AgentTask[]
   const { providers } = await loadProviders();
   const fs = o.local?.fs ?? projectFS();
   const ctx: RunContext = {
-    tools: { fs, writes: [], deletes: [], runner: o.local?.runner ?? (o.rootId ? bridgeRunner(o.rootId) : undefined), approve: (cmd) => requestApproval({ kind: "command", title: "Run this command?", detail: "An AI agent wants to run a command in your project folder.", command: cmd, danger: /rm\s|sudo|curl[^|]*\|\s*(ba)?sh|chmod|mkfs|dd\s/.test(cmd) }) },
+    tools: { fs, writes: [], deletes: [], extra: await mcpAgentTools(), runner: o.local?.runner ?? (o.rootId ? bridgeRunner(o.rootId) : undefined), approve: (cmd) => requestApproval({ kind: "command", title: "Run this command?", detail: "An AI agent wants to run a command in your project folder.", command: cmd, danger: /rm\s|sudo|curl[^|]*\|\s*(ba)?sh|chmod|mkfs|dd\s/.test(cmd) }) },
     providerFor: (m) => providers.find((p) => p.id === m.provider),
     models: useApp.getState().models, prefs: { privacy: useApp.getState().settings.localOnly ? "local-only" : "any", optimise: useApp.getState().settings.optimise, assignments: useApp.getState().settings.assignments },
     projectBrief: o.brief, signal: o.signal, skills: await enabledSkills(),

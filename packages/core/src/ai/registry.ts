@@ -14,6 +14,10 @@ export interface Preset {
   note?: string;
   maxTokensParam?: ProviderConfig["maxTokensParam"];
   docs?: string;
+  /** Extra request headers every call sends (e.g. OpenRouter's app attribution). */
+  headers?: Record<string, string>;
+  /** Where users create a key. */
+  keyUrl?: string;
 }
 
 /** Endpoint presets only. Models are always discovered from the endpoint, never listed here. */
@@ -23,7 +27,19 @@ export const PRESETS: Preset[] = [
   { id: "gemini", label: "Google Gemini", kind: "openai-compat", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", local: false, needsKey: true, note: "Uses Google's OpenAI-compatible endpoint" },
   { id: "xai", label: "xAI (Grok)", kind: "openai-compat", baseUrl: "https://api.x.ai/v1", local: false, needsKey: true },
   { id: "moonshot", label: "Moonshot (Kimi)", kind: "openai-compat", baseUrl: "https://api.moonshot.ai/v1", local: false, needsKey: true },
-  { id: "openrouter", label: "OpenRouter", kind: "openai-compat", baseUrl: "https://openrouter.ai/api/v1", local: false, needsKey: true, note: "Hundreds of models; reports pricing and context size" },
+  { id: "openrouter", label: "OpenRouter", kind: "openai-compat", baseUrl: "https://openrouter.ai/api/v1", local: false, needsKey: true, note: "Hundreds of models; reports pricing and context size. Use “Sign in with OpenRouter” to create a key without copying it.", headers: { "HTTP-Referer": "https://github.com/CartyChris/omniforge-re", "X-Title": "OmniForge RE" }, keyUrl: "https://openrouter.ai/settings/keys" },
+  { id: "groq", label: "Groq", kind: "openai-compat", baseUrl: "https://api.groq.com/openai/v1", local: false, needsKey: true, keyUrl: "https://console.groq.com/keys" },
+  { id: "mistral", label: "Mistral", kind: "openai-compat", baseUrl: "https://api.mistral.ai/v1", local: false, needsKey: true, keyUrl: "https://console.mistral.ai/api-keys" },
+  { id: "deepseek", label: "DeepSeek", kind: "openai-compat", baseUrl: "https://api.deepseek.com/v1", local: false, needsKey: true, keyUrl: "https://platform.deepseek.com/api_keys" },
+  { id: "together", label: "Together AI", kind: "openai-compat", baseUrl: "https://api.together.xyz/v1", local: false, needsKey: true },
+  { id: "fireworks", label: "Fireworks AI", kind: "openai-compat", baseUrl: "https://api.fireworks.ai/inference/v1", local: false, needsKey: true },
+  { id: "cerebras", label: "Cerebras", kind: "openai-compat", baseUrl: "https://api.cerebras.ai/v1", local: false, needsKey: true },
+  { id: "perplexity", label: "Perplexity", kind: "openai-compat", baseUrl: "https://api.perplexity.ai", local: false, needsKey: true, note: "Search-grounded models; no tool calling on most models" },
+  { id: "huggingface", label: "Hugging Face Inference Providers", kind: "openai-compat", baseUrl: "https://router.huggingface.co/v1", local: false, needsKey: true, keyUrl: "https://huggingface.co/settings/tokens" },
+  { id: "nvidia", label: "NVIDIA NIM (build.nvidia.com)", kind: "openai-compat", baseUrl: "https://integrate.api.nvidia.com/v1", local: false, needsKey: true },
+  { id: "vercel-gateway", label: "Vercel AI Gateway", kind: "openai-compat", baseUrl: "https://ai-gateway.vercel.sh/v1", local: false, needsKey: true },
+  { id: "zai", label: "Z.ai (GLM)", kind: "openai-compat", baseUrl: "https://api.z.ai/api/paas/v4", local: false, needsKey: true },
+  { id: "dashscope", label: "Alibaba Qwen (DashScope, international)", kind: "openai-compat", baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", local: false, needsKey: true },
   { id: "ollama", label: "Ollama", kind: "ollama", baseUrl: "http://localhost:11434", local: true, needsKey: false },
   { id: "lmstudio", label: "LM Studio", kind: "openai-compat", baseUrl: "http://localhost:1234/v1", local: true, needsKey: false },
   { id: "llamacpp", label: "llama.cpp server", kind: "openai-compat", baseUrl: "http://localhost:8080/v1", local: true, needsKey: false },
@@ -35,7 +51,7 @@ export const PRESETS: Preset[] = [
 
 export function configFromPreset(presetId: string, o: Partial<ProviderConfig> = {}): ProviderConfig {
   const p = PRESETS.find((x) => x.id === presetId) ?? PRESETS[PRESETS.length - 1]!;
-  return { id: o.id ?? `${p.id}-${uid("p").slice(-4)}`, label: p.label, kind: p.kind, preset: p.id, baseUrl: p.baseUrl, local: p.local, maxTokensParam: p.maxTokensParam, enabled: true, ...o };
+  return { id: o.id ?? `${p.id}-${uid("p").slice(-4)}`, label: p.label, kind: p.kind, preset: p.id, baseUrl: p.baseUrl, local: p.local, maxTokensParam: p.maxTokensParam, enabled: true, ...(p.headers ? { headers: { ...p.headers } } : {}), ...o };
 }
 
 export function createProvider(cfg: ProviderConfig, fetchImpl: typeof fetch = globalThis.fetch): Provider {

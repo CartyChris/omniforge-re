@@ -8,7 +8,7 @@
 import { isTauri, type Bridge } from "./bridge";
 
 const DIRECT_OK = new Set(["api.osv.dev", "api.anthropic.com", "api.openai.com", "openrouter.ai", "generativelanguage.googleapis.com", "api.mistral.ai", "api.groq.com", "api.together.xyz", "api.deepseek.com", "api.github.com"]);
-const FORWARDABLE = new Set(["api.x.ai", "api.moonshot.ai", "api.moonshot.cn", "api.vercel.com", ...DIRECT_OK]);
+const FORWARDABLE = new Set(["api.x.ai", "api.moonshot.ai", "api.moonshot.cn", "api.vercel.com", "api.fireworks.ai", "api.cerebras.ai", "api.perplexity.ai", "router.huggingface.co", "integrate.api.nvidia.com", "ai-gateway.vercel.sh", "api.z.ai", "dashscope-intl.aliyuncs.com", ...DIRECT_OK]);
 const isLocal = (h: string) => h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h === "::1";
 
 export function smartFetch(getBridge: () => Bridge | null, hostedBase = ""): typeof fetch {

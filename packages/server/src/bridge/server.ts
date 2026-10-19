@@ -26,9 +26,14 @@ import { AgentRuns, applyChanges, createShadow, listChanges, readSides, runClaud
 import { backupFiles, record as recordChange } from "./changelog.js";
 import type { Deobfuscator } from "@omniforge/core";
 import { scanSkills } from "./skills.js";
+import { McpHub, specFrom } from "./mcp.js";
+import { nodeNet } from "../net.js";
+import { exchangeOpenRouterCode, openRouterAuthUrl, pkcePair } from "@omniforge/core";
+import { execFile } from "node:child_process";
+import crypto from "node:crypto";
 import { nodeStructureExtractor } from "@omniforge/structure/node";
 
-export interface BridgeOptions { port?: number; uiToken?: string; version?: string; allowedOrigins?: string[]; jobsDir?: string; reaDir?: string; /** tests only: drive this executable as "Claude Code" instead of the installed one */ agentCliPath?: string; /** tests only: home folder to scan for Agent Skills */ skillsHome?: string }
+export interface BridgeOptions { port?: number; uiToken?: string; version?: string; allowedOrigins?: string[]; jobsDir?: string; reaDir?: string; /** tests only: drive this executable as "Claude Code" instead of the installed one */ agentCliPath?: string; /** tests only: home folder to scan for Agent Skills */ skillsHome?: string; /** tests only: how sign-in pages are opened and codes exchanged */ openUrl?: (url: string) => void; oauthFetch?: typeof fetch }
 export interface Bridge { url: string; port: number; auth: BridgeAuth; roots: Roots; jobs: JobManager; close(): Promise<void> }
 
 const ndjson = (lines: Iterable<string>) => { const enc = new TextEncoder(); const it = lines[Symbol.iterator](); return new Response(new ReadableStream<Uint8Array>({ pull(c) { const n = it.next(); if (n.done) c.close(); else c.enqueue(enc.encode(n.value)); } }), { headers: { "content-type": "application/x-ndjson", "cache-control": "no-store" } }); };
@@ -39,7 +44,9 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
   const rea = new ReaJobs(jobs, o.reaDir);
   let renderer: PlaywrightRenderer | null = null;
   const getRenderer = () => (renderer ??= new PlaywrightRenderer({ allowPrivate: true }));
-  const agentRuns = new AgentRuns();
+  const agentRuns = new AgentRuns(); const mcpHub = new McpHub();
+  const oauth = new Map<string, { verifier: string; at: number; key?: string; error?: string }>();
+  const openUrl = o.openUrl ?? ((u: string) => { execFile(process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open", [u], () => {}); });
   const structure = nodeStructureExtractor(); // tree-sitter grammars are read from disk on first use
   // webcrack + the QuickJS sandbox are loaded only when a deobfuscation is first requested
   let deob: Deobfuscator | null = null;
@@ -236,6 +243,36 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
       if (wantsRender) need(p, "render");
       return analyzeHandler(req, { mode: "local", renderer: wantsRender ? getRenderer() : undefined, deobfuscator: body?.config?.deobfuscate ? getDeobfuscator() : undefined });
     }
+    /* ---- MCP servers for OmniForge's own agents: starting a stdio server runs a program as the user, so it needs the exec permission ---- */
+    if (is("POST", "/bridge/mcp/connect")) {
+      need(p, "exec"); const b = await readJson(req, 100_000); const list: ReturnType<typeof specFrom>[] = Array.isArray(b.servers) ? b.servers.slice(0, 8).map(specFrom) : [];
+      return json({ servers: await Promise.all(list.map(async (spec: ReturnType<typeof specFrom>) => { try { const c = await mcpHub.connect(spec); return { name: spec.name, ok: true, serverInfo: c.serverInfo, tools: c.tools }; } catch (e) { return { name: spec.name, ok: false, error: (e as Error).message }; } })) });
+    }
+    if (is("POST", "/bridge/mcp/call")) {
+      need(p, "exec"); const b = await readJson(req, 2_000_000);
+      try { return json(await mcpHub.call(specFrom(b.server), String(b.tool ?? ""), b.args && typeof b.args === "object" ? b.args : {})); } catch (e) { return err((e as Error).message, 400); }
+    }
+    if (is("POST", "/bridge/mcp/disconnect")) { need(p, "exec"); const b = await readJson(req, 100_000); for (const s of Array.isArray(b.servers) ? b.servers.slice(0, 8) : []) await mcpHub.disconnect(specFrom(s)); return json({ ok: true }); }
+    /* ---- "Sign in with OpenRouter" (OAuth PKCE): the browser comes back to this loopback engine, which exchanges the code for a key ---- */
+    if (is("POST", "/bridge/oauth/openrouter/start")) {
+      ui(); for (const [k, v] of oauth) if (Date.now() - v.at > 15 * 60_000) oauth.delete(k);
+      const state = crypto.randomBytes(16).toString("hex"); const { verifier, challenge } = await pkcePair(); oauth.set(state, { verifier, at: Date.now() });
+      const authUrl = openRouterAuthUrl(`http://${url.host}/bridge/oauth/openrouter/callback/${state}`, challenge); openUrl(authUrl);
+      return json({ state, url: authUrl });
+    }
+    if ((mm = pathn.match(/^\/bridge\/oauth\/openrouter\/callback\/([a-f0-9]{32})$/)) && m === "GET") {
+      const st = oauth.get(mm[1]!); const page = (title: string, body: string, status = 200) => new Response(`<!doctype html><meta charset="utf-8"><title>${title}</title><body style="font:16px system-ui;margin:3rem;max-width:36rem"><h1>${title}</h1><p>${body}</p></body>`, { status, headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'" } });
+      if (!st || st.key || st.error) return page("Sign-in link expired", "Start “Sign in with OpenRouter” again from OmniForge RE.", 400);
+      const code = url.searchParams.get("code") ?? "";
+      try { st.key = await exchangeOpenRouterCode(code, st.verifier, { fetch: o.oauthFetch ?? (nodeNet({ allowPrivate: false }).fetch as unknown as typeof fetch) }); return page("Signed in to OpenRouter", "You can close this tab and return to OmniForge RE."); }
+      catch (e) { st.error = (e as Error).message; return page("OpenRouter sign-in failed", st.error.replace(/[<>&]/g, ""), 400); }
+    }
+    if ((mm = pathn.match(/^\/bridge\/oauth\/openrouter\/result\/([a-f0-9]{32})$/)) && m === "GET") {
+      ui(); const st = oauth.get(mm[1]!); if (!st) return json({ status: "unknown" });
+      if (st.key) { oauth.delete(mm[1]!); return json({ status: "done", key: st.key }); } // handed over once, then forgotten
+      if (st.error) { oauth.delete(mm[1]!); return json({ status: "error", error: st.error }); }
+      return json({ status: "pending" });
+    }
     if (is("GET", "/bridge/skills")) { ui(); return json(scanSkills(o.skillsHome)); }
     if (is("GET", "/bridge/changes")) { ui(); return json({ changes: readChanges(), backups: listBackups() }); }
     if (is("POST", "/bridge/restore")) { ui(); const b = await readJson(req, 2000); return json({ restored: restoreBackup(String(b.dir)) }); }
@@ -292,7 +329,7 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
   void path;
   return {
     url: `http://127.0.0.1:${port}`, port, auth, roots, jobs,
-    async close() { await agentRuns.closeAll(); await jobs.shutdown(); await renderer?.close(); await new Promise<void>((r) => { server.closeAllConnections?.(); server.close(() => r()); }); },
+    async close() { await mcpHub.closeAll(); await agentRuns.closeAll(); await jobs.shutdown(); await renderer?.close(); await new Promise<void>((r) => { server.closeAllConnections?.(); server.close(() => r()); }); },
   };
 }
 export type { Investigation };

@@ -6,6 +6,7 @@ import { allSkills, importSkillFiles, removeImportedSkill, setSkillEnabled, type
 import { useApp } from "@/lib/store";
 import { Badge, Button, Card, CardBody, CardHeader, CardTitle, EmptyState } from "@/components/ui/primitives";
 import { Dialog, DialogContent, Switch } from "@/components/ui/overlay";
+import { McpAgentsCard } from "./McpAgentsCard";
 
 /** Agent Skills used by OmniForge's own agents (Build plans). Agent CLIs such as Claude Code load their own skills themselves. */
 export function SkillsPanel() {
@@ -42,6 +43,7 @@ export function SkillsPanel() {
             {s.origin === "Imported" && <Button size="xs" variant="ghost" onClick={() => void removeImportedSkill(s.name).then(refresh)}>Remove</Button>}
             <Switch aria-label={`Enable skill ${s.name}`} checked={!disabled.includes(s.name)} onCheckedChange={(on: boolean) => void setSkillEnabled(s.name, on).then(refresh)} />
           </li>))}</ul></Card>}
+      <McpAgentsCard />
       <Dialog open={!!view} onOpenChange={(o) => !o && setView(null)}>{view && <DialogContent side="right" title={view.name} description={view.source}>
         <div className="space-y-3 text-[13px]"><p className="text-muted">{view.description}</p>
           <pre tabIndex={0} aria-label="Skill instructions" className="max-h-[60vh] overflow-auto whitespace-pre-wrap rounded-lg bg-overlay p-3 font-mono text-xs">{view.body}</pre>

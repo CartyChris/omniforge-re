@@ -26,12 +26,13 @@ function call(method: string, p: string, o: { token?: string; origin?: string; b
   });
 }
 const ui = (method: string, p: string, body?: unknown) => call(method, p, { token: bridge.auth.uiToken, origin: "tauri://localhost", body });
+const opened: string[] = []; const exchanged: { u: string; body: any }[] = [];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 beforeAll(async () => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), "omni-e2e-"));
   process.env.OMNIFORGE_HOME = path.join(tmp, "home"); process.env.REA_BIN = path.resolve(__dirname, "../node_modules/.bin/rea");
-  bridge = await startBridge({ jobsDir: path.join(tmp, "jobs"), reaDir: path.join(tmp, "rea"), agentCliPath: path.join(__dirname, "fixtures/fake-claude.mjs"), skillsHome: path.join(tmp, "skills-home") });
+  bridge = await startBridge({ jobsDir: path.join(tmp, "jobs"), reaDir: path.join(tmp, "rea"), agentCliPath: path.join(__dirname, "fixtures/fake-claude.mjs"), skillsHome: path.join(tmp, "skills-home"), openUrl: (u) => { opened.push(u); }, oauthFetch: (async (u: string, init: RequestInit) => { exchanged.push({ u, body: JSON.parse(String(init.body)) }); return new Response(JSON.stringify({ key: "sk-or-v1-test" }), { status: 200 }); }) as never });
   fs.mkdirSync(path.join(tmp, "skills-home/.claude/skills/house-style"), { recursive: true }); fs.writeFileSync(path.join(tmp, "skills-home/.claude/skills/house-style/SKILL.md"), "---\nname: house-style\ndescription: Our house style.\n---\nUse named exports.\n");
   fx = createFixture(); fxBase = await fx.listen();
 }, 30_000);
@@ -116,6 +117,22 @@ describe("pairing → approval → scoped access", () => {
 });
 
 describe("privileged capabilities through the bridge (desktop UI token)", () => {
+  it("Sign in with OpenRouter: PKCE start opens the browser, the loopback callback exchanges the code, the key is handed over once", async () => {
+    expect((await call("POST", "/bridge/oauth/openrouter/start", { body: {} })).status).toBe(401);
+    const s = await ui("POST", "/bridge/oauth/openrouter/start", {}); expect(s.status).toBe(200);
+    const auth = new URL(opened.at(-1)!); expect(auth.origin + auth.pathname).toBe("https://openrouter.ai/auth"); expect(s.json.url).toBe(opened.at(-1));
+    const cb = new URL(auth.searchParams.get("callback_url")!); expect(cb.origin).toBe(bridge.url); expect(cb.pathname).toBe(`/bridge/oauth/openrouter/callback/${s.json.state}`);
+    expect((await ui("GET", `/bridge/oauth/openrouter/result/${s.json.state}`)).json.status).toBe("pending");
+    // the browser lands on the callback (no token, no CSRF header: it's a plain navigation)
+    const page = await call("GET", `${cb.pathname}?code=abcDEF123`, { csrf: false }); expect(page.status).toBe(200); expect(page.text).toContain("Signed in to OpenRouter");
+    expect(exchanged.at(-1)!.body).toMatchObject({ code: "abcDEF123", code_challenge_method: "S256" });
+    const verifierHash = Buffer.from(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(exchanged.at(-1)!.body.code_verifier))).toString("base64url");
+    expect(verifierHash).toBe(auth.searchParams.get("code_challenge")); // the verifier matches the challenge we sent
+    expect((await ui("GET", `/bridge/oauth/openrouter/result/${s.json.state}`)).json).toEqual({ status: "done", key: "sk-or-v1-test" });
+    expect((await ui("GET", `/bridge/oauth/openrouter/result/${s.json.state}`)).json.status).toBe("unknown"); // never handed over twice
+    expect((await call("GET", `${cb.pathname}?code=again`, { csrf: false })).status).toBe(400); // replay is refused
+    expect((await call("GET", `/bridge/oauth/openrouter/callback/${"0".repeat(32)}?code=x`, { csrf: false })).status).toBe(400);
+  });
   it("lists the user's Agent Skills only to the desktop UI", async () => {
     expect((await call("GET", "/bridge/skills")).status).toBe(401);
     const r = await ui("GET", "/bridge/skills"); expect(r.status).toBe(200);

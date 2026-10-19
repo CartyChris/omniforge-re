@@ -66,7 +66,8 @@ export class OpenAICompatProvider implements Provider {
     if (req.maxTokens) body[this.cfg.maxTokensParam ?? "max_tokens"] = req.maxTokens;
     if (req.tools?.length) body.tools = req.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } }));
     if (req.json) body.response_format = typeof req.json === "object" ? { type: "json_schema", json_schema: { name: "output", schema: req.json, strict: false } } : { type: "json_object" };
-    if (req.reasoning && req.reasoning !== "off") body.reasoning_effort = req.reasoning;
+    // OpenRouter normalises reasoning across vendors with a `reasoning` object; other OpenAI-compatible servers take `reasoning_effort`.
+    if (req.reasoning && req.reasoning !== "off") { if (this.cfg.preset === "openrouter") body.reasoning = { effort: req.reasoning }; else body.reasoning_effort = req.reasoning; }
     const res = await http(this.cfg, "chat/completions", { method: "POST", json: body, headers: authHeaders(this.cfg), signal: req.signal }, this.fetchImpl);
     const pending = new Map<number, { id: string; name: string; args: string }>();
     let finish: any = "other";

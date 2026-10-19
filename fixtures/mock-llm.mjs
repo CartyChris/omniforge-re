@@ -38,6 +38,9 @@ export function createMockLlm({ model = "mock-scripted-coder" } = {}) {
           return sse(res, [{ choices: [{ delta: { content: reply }, index: 0 }] }, { choices: [{ delta: {}, finish_reason: "stop", index: 0 }], usage: { prompt_tokens: 10, completion_tokens: 10 } }]);
         }
         if (!tools.length) return sse(res, [{ choices: [{ delta: { content: "mock answer" }, index: 0 }] }, { choices: [{ delta: {}, finish_reason: "stop", index: 0 }], usage: { prompt_tokens: 10, completion_tokens: 2 } }]);
+        // If MCP tools are offered, call the first one once (plumbing test for OmniForge's MCP client); the result is echoed back by the app as a tool message.
+        const mcp = tools.find((t) => /^mcp__/.test(t.function?.name ?? ""));
+        if (mcp && !j.messages.some((m) => m.role === "tool" && String(m.content ?? "").includes(`label="mcp:`))) return sse(res, [{ choices: [{ delta: { tool_calls: [call(mcp.function.name, {})] }, index: 0 }] }, { choices: [{ delta: {}, finish_reason: "tool_calls", index: 0 }], usage: { prompt_tokens: 50, completion_tokens: 5 } }]);
         const tc = next ? call("write_file", { path: next, content: content(next, user.split("OBJECTIVE\n")[1] ?? "") }) : call("finish", { summary: `Mock model finished; wrote ${written.length} file(s): ${written.join(", ") || "none"}.` });
         sse(res, [{ choices: [{ delta: { tool_calls: [tc] }, index: 0 }] }, { choices: [{ delta: {}, finish_reason: "tool_calls", index: 0 }], usage: { prompt_tokens: 50, completion_tokens: 20 } }]);
       });

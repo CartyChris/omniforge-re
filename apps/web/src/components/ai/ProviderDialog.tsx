@@ -8,11 +8,12 @@ import { keyName, newProviderConfig, refreshModels, testProvider } from "@/lib/a
 import { Badge, Button, Field, Input } from "@/components/ui/primitives";
 import { Dialog, DialogContent, Select } from "@/components/ui/overlay";
 import { cn } from "@/lib/utils";
+import { signInWithOpenRouter } from "@/lib/openrouter";
 
-const BLURB: Record<string, string> = { anthropic: "Claude models", openai: "GPT & reasoning models", gemini: "Gemini via OpenAI-compatible API", xai: "Grok models", moonshot: "Kimi models", openrouter: "One key, hundreds of models", ollama: "Local · port 11434", lmstudio: "Local · port 1234", llamacpp: "Local · llama-server", mlx: "Local · Apple MLX server", unsloth: "Local · Unsloth Studio API", vllm: "Local · vLLM", custom: "Any OpenAI-compatible endpoint" };
+const BLURB: Record<string, string> = { anthropic: "Claude models", openai: "GPT & reasoning models", gemini: "Gemini via OpenAI-compatible API", xai: "Grok models", moonshot: "Kimi models", openrouter: "One key, hundreds of models", ollama: "Local · port 11434", lmstudio: "Local · port 1234", llamacpp: "Local · llama-server", mlx: "Local · Apple MLX server", unsloth: "Local · Unsloth Studio API", vllm: "Local · vLLM", groq: "Very fast open models", mistral: "Mistral & Codestral", deepseek: "DeepSeek chat & reasoner", together: "Open models, serverless", fireworks: "Open models, serverless", cerebras: "Very fast inference", perplexity: "Search-grounded answers", huggingface: "HF Inference Providers router", nvidia: "NVIDIA NIM endpoints", "vercel-gateway": "Many providers, one key", zai: "GLM models", dashscope: "Qwen models", custom: "Any OpenAI-compatible endpoint" };
 
 export function ProviderDialog({ open, onOpenChange, editing, initialPreset }: { open: boolean; onOpenChange: (v: boolean) => void; editing?: ProviderConfig; initialPreset?: string }) {
-  const { providers, setProviders } = useApp();
+  const { providers, setProviders } = useApp(); const [signing, setSigning] = useState(false);
   const [preset, setPreset] = useState(initialPreset ?? "anthropic");
   const [cfg, setCfg] = useState<ProviderConfig>(() => editing ?? newProviderConfig(initialPreset ?? "anthropic"));
   const [key, setKey] = useState("");
@@ -68,6 +69,7 @@ export function ProviderDialog({ open, onOpenChange, editing, initialPreset }: {
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Name"><Input value={cfg.label} onChange={(e) => setCfg({ ...cfg, label: e.target.value })} /></Field>
             <Field label="Endpoint" hint={p?.note}><Input value={cfg.baseUrl} onChange={(e) => setCfg({ ...cfg, baseUrl: e.target.value })} spellCheck={false} /></Field>
+            {preset === "openrouter" && <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-bg p-3 text-[13px] sm:col-span-2"><span className="min-w-0 flex-1 text-muted">No key yet? Sign in with your OpenRouter account and a key is created for you and stored encrypted — nothing to copy.</span><Button size="sm" variant="primary" loading={signing} onClick={() => { setSigning(true); void signInWithOpenRouter().then((r) => { if (r === "done") { toast.success("Signed in to OpenRouter"); onOpenChange(false); } }).catch((e) => toast.error((e as Error).message)).finally(() => setSigning(false)); }}>Sign in with OpenRouter</Button></div>}
             <Field label={`API key${p && !p.needsKey ? " (optional)" : ""}`} hint={keyStored && !key ? "A key is stored (encrypted). Leave blank to keep it." : "Stored encrypted on this device; never in project exports."} className="sm:col-span-2">
               <div className="relative"><KeyRound className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-faint" /><Input type="password" autoComplete="off" value={key} onChange={(e) => setKey(e.target.value)} placeholder={keyStored ? "••••••••••••" : "sk-…"} className="pl-9" /></div>
             </Field>

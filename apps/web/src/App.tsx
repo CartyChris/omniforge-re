@@ -1,7 +1,8 @@
 import { lazy, Suspense, useEffect } from "react";
 import { HashRouter, Route, Routes, useNavigate } from "react-router";
 import { initDesktop } from "@/lib/desktop";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
+import { completeOpenRouterSignIn } from "@/lib/openrouter";
 import { useApp } from "@/lib/store";
 import { refreshModels } from "@/lib/ai";
 import { Shell } from "@/components/layout/Shell";
@@ -32,6 +33,7 @@ export default function App() {
   const ready = useApp((s) => s.ready);
   useEffect(() => { void init(); }, [init]);
   useEffect(() => { if (ready) void refreshModels(); }, [ready, providers, bridgeState]);
+  useEffect(() => { if (ready) void completeOpenRouterSignIn().then((ok) => { if (ok) toast.success("Signed in to OpenRouter — its models are being discovered."); }).catch((e) => toast.error(`OpenRouter sign-in failed: ${(e as Error).message}`)); }, [ready]);
   return (
     <HashRouter>
       <DesktopBridge />
