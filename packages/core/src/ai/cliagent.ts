@@ -67,8 +67,9 @@ export function mcpConfigJson(servers: McpServerSpec[]): string {
 /** One-line, untruncated description for consent dialogs and logs. */
 export const describeMcpServer = (s: McpServerSpec): string => ("url" in s ? `${s.name}: ${s.url}` : `${s.name}: ${[s.command, ...(s.args ?? [])].join(" ")}`);
 
-/** Servers that are well known and open source. Versions are pinned so a later registry release cannot change what runs. */
+/** Open-source servers: package-runner versions are pinned; REA uses the user's explicitly installed CLI. */
 export const MCP_PRESETS: { id: string; label: string; blurb: string; leaves: string; server: McpServerSpec }[] = [
+  { id: "rea", label: "REA · Reverse Engineer Anything", blurb: "Official morluto/rea CLI: binary, JavaScript, Electron and artifact evidence (MIT). Install through Integrations first; model must support tool calling.", leaves: "Runs your installed rea mcp on the desktop. Tools may launch native engines or interact with targets; review tool permissions before enabling. Results sent to a cloud model leave this device. Latest checked release: 6.8.0; requires Node 22.23.4+, 24.22.1+ or 26.12.1+ within the supported major lines.", server: { name: "rea", command: "rea", args: ["mcp"] } },
   { id: "chrome-devtools", label: "Chrome DevTools", blurb: "Inspect a live page: network, console, performance, accessibility (Apache-2.0).", leaves: "Drives a Chrome on this Mac; statistics and CrUX lookups are switched off.", server: { name: "chrome-devtools", command: "npx", args: ["-y", "chrome-devtools-mcp@1.11.0", "--isolated", "--no-usage-statistics", "--no-performance-crux"] } },
   { id: "playwright", label: "Playwright", blurb: "Browse and interact with pages the way a user would (Apache-2.0).", leaves: "Its own README says it is not a security boundary.", server: { name: "playwright", command: "npx", args: ["-y", "@playwright/mcp@0.0.83"] } },
   { id: "context7", label: "Context7 docs", blurb: "Current library documentation lookup (MIT).", leaves: "Library names you ask about are sent to Context7's hosted service.", server: { name: "context7", command: "npx", args: ["-y", "@upstash/context7-mcp@4.4.2"] } },

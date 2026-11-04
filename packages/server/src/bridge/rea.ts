@@ -104,6 +104,12 @@ export const REA_OPS: ReaOp[] = [
   { id: "inspect-managed-members", label: ".NET members & CIL", needsPath: true, kind: "static", accepts: ".dll / .exe (PE/CLI)", extra: (o) => (o.type ? ["--type", o.type] : []) },
   { id: "inspect-go-binary", label: "Go build metadata", needsPath: true, kind: "static", accepts: "Go executable" },
   { id: "inspect-rust-binary", label: "Rust (cargo-auditable) dependencies", needsPath: true, kind: "static", accepts: "Rust executable" },
+  { id: "inspect-model-artifact", label: "AI model metadata (no weight execution)", needsPath: true, kind: "static", accepts: ".gguf / .safetensors" },
+  { id: "inspect-il2cpp-metadata", label: "Unity IL2CPP type and method names", needsPath: true, kind: "static", accepts: "global-metadata.dat" },
+  { id: "inspect-pe-imports", label: "Windows PE imports and delay-load tables", needsPath: true, kind: "static", accepts: ".exe / .dll" },
+  { id: "inspect-pe-certificates", label: "PE certificate metadata (not signature verification)", needsPath: true, kind: "static", accepts: ".exe / .dll" },
+  { id: "inspect-elf-notes", label: "ELF notes and build identity", needsPath: true, kind: "static", accepts: "ELF executable / library" },
+  { id: "inspect-apple-ips", label: "Apple crash report", needsPath: true, kind: "static", accepts: ".ips" },
   { id: "inspect-wasm-artifact", label: "WebAssembly module", needsPath: true, kind: "static", accepts: ".wasm" },
   { id: "inspect-sqlite-database", label: "SQLite database schema", needsPath: true, kind: "static", accepts: ".db / .sqlite" },
   { id: "inspect-artifact", label: "Package / resource inventory", needsPath: true, kind: "static", accepts: "app bundle, archive, directory" },
@@ -176,7 +182,7 @@ export function reaToInvestigation(env: ReaEnvelope, o: { name?: string; targetP
   const graph = n.graph ?? { nodes: [], edges: [] };
   const evidence: Evidence[] = [];
   const ev = (e: Omit<Evidence, "id" | "timestamp" | "method"> & { method?: string }) => { const id = uid("ev"); evidence.push({ id, timestamp: startedAt, method: e.method ?? `rea:${env.operation}`, ...e }); return id; };
-  const rootEv = ev({ kind: "reconstructed", source: o.targetPath ?? env.subject?.local_path ?? env.subject?.name, hash: env.subject?.digest?.sha256, confidence: CONF[env.confidence] ?? 0.8, summary: `REA ${env.provider?.name} ${env.provider?.version} · ${env.operation} · authority “${env.authority}”, confidence “${env.confidence}” (evidence ${env.evidence_id})` });
+  const rootEv = ev({ kind: "reconstructed", source: o.targetPath ?? env.subject?.local_path ?? env.subject?.name, hash: env.subject?.digest?.sha256, confidence: CONF[env.confidence] ?? 0, summary: `REA ${env.provider?.name} ${env.provider?.version} · ${env.operation} · authority “${env.authority}”, confidence “${env.confidence}” (evidence ${env.evidence_id})` });
 
   const nodes: GraphNode[] = [];
   const idMap = new Map<string, string>();
@@ -220,7 +226,7 @@ export function reaToInvestigation(env: ReaEnvelope, o: { name?: string; targetP
 
   const endpoints = byKind("endpoint").map((e: any) => ({ url: String(nodeProps(e).value ?? nodeLabel(e)), kind: "rest" as const, foundIn: String(e.observations?.[0]?.evidence?.location?.value?.source ?? ""), evidence: rootEv }));
   const cov = graph.coverage?.status;
-  const limitations = [...(env.limitations ?? []), ...(n.limitations ?? [])];
+  const limitations = [...(env.limitations ?? []), ...(n.limitations ?? []), ...(CONF[env.confidence] === undefined ? [`Unverified confidence: REA reported “${env.confidence}”; no confidence score was inferred.`] : [])];
   const checks = [
     { id: "rea", label: `REA ${env.operation}`, status: (cov === "complete" ? "done" : "partial") as "done" | "partial", detail: `Graph coverage: ${cov ?? "n/a"}; ${n.statistics?.parsed_javascript_files ?? "?"} JS file(s) parsed, ${n.statistics?.parse_failures ?? 0} failure(s)` },
     { id: "runtime", label: "Runtime behaviour observed", status: "skipped" as const, detail: "Static analysis of the shipped artifact only" },

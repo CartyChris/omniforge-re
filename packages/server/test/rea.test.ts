@@ -109,6 +109,19 @@ describe("REA job on a real Electron-style app", () => {
   }, 120_000);
 });
 
+describe("REA evidence and inspector catalog", () => {
+  it("does not invent confidence for unknown upstream classifications", () => {
+    const inv = reaToInvestigation({ evidence_id: "ev-test", subject: { name: "sample" }, provider: { id: "test", name: "Test", version: "1" }, operation: "inspect_model_artifact", predicate_type: "metadata", confidence: "unverified", authority: "artifact", limitations: [] });
+    expect(inv.evidence[0]?.confidence).toBe(0);
+    expect(inv.limitations.join(" ")).toContain("Unverified confidence");
+  });
+  it("exposes newer static inspectors without granting runtime execution", () => {
+    for (const id of ["inspect-model-artifact", "inspect-il2cpp-metadata", "inspect-pe-imports", "inspect-pe-certificates", "inspect-elf-notes", "inspect-apple-ips"]) {
+      expect(REA_OPS.find((op) => op.id === id)).toMatchObject({ kind: "static", needsPath: true });
+    }
+  });
+});
+
 describe("REA guardrails", () => {
   const mk = () => new ReaJobs(new JobManager({ dir: fs.mkdtempSync(path.join(tmp, "j-")) }), path.join(tmp, "rea2"));
   it("only runs allow-listed static operations on absolute, existing paths", () => {

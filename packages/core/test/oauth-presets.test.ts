@@ -36,6 +36,28 @@ describe("provider presets", () => {
     for (const p of PRESETS.filter((x) => !x.local && x.id !== "custom")) expect(p.baseUrl, p.id).toMatch(/^https:\/\/[a-z0-9.-]+\.[a-z]{2,}(?:\/|$)/);
     for (const id of ["groq", "mistral", "deepseek", "together", "fireworks", "cerebras", "huggingface", "nvidia", "vercel-gateway"]) expect(ids, id).toContain(id);
   });
+  it("offers an HTTPS sign-up/key link for every named cloud provider", () => {
+    for (const p of PRESETS.filter((x) => !x.local && x.id !== "custom")) {
+      expect(p.keyUrl, p.id).toMatch(/^https:\/\//);
+    }
+  });
+  it.each(["unaligned", "venice", "chutes"])("%s discovers models and streams via the shared transport", async (id) => {
+    const cfg = configFromPreset(id, { apiKey: "test-only-key" });
+    const urls: string[] = [];
+    const transport = (async (url: string, init: RequestInit) => {
+      urls.push(url);
+      expect(new Headers(init.headers).get("authorization")).toBe("Bearer test-only-key");
+      if (url.endsWith("/models")) return Response.json({ data: [{ id: "discovered-model" }] });
+      expect(JSON.parse(String(init.body)).model).toBe("discovered-model");
+      return new Response('data: {"choices":[{"delta":{"content":"verified"}}]}\n\ndata: [DONE]\n\n');
+    }) as typeof fetch;
+    const provider = createProvider(cfg, transport);
+    expect((await provider.listModels())[0]?.id).toBe("discovered-model");
+    const events = [];
+    for await (const event of provider.chat({ model: "discovered-model", messages: [{ role: "user", content: "hello" }] })) events.push(event);
+    expect(JSON.stringify(events)).toContain("verified");
+    expect(urls).toEqual([`${cfg.baseUrl}/models`, `${cfg.baseUrl}/chat/completions`]);
+  });
   it("OpenRouter calls carry app attribution headers and its own reasoning parameter; others use reasoning_effort", async () => {
     const reqs: { url: string; headers: Record<string, string>; body: any }[] = [];
     const f = (async (url: string, init: RequestInit) => { reqs.push({ url, headers: init.headers as Record<string, string>, body: JSON.parse(String(init.body)) }); return new Response('data: {"choices":[{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n', { status: 200, headers: { "content-type": "text/event-stream" } }); }) as unknown as typeof fetch;

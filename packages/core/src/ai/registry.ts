@@ -20,6 +20,22 @@ export interface Preset {
   keyUrl?: string;
 }
 
+const KEY_URLS: Record<string, string> = {
+  anthropic: "https://console.anthropic.com/settings/keys",
+  openai: "https://platform.openai.com/api-keys",
+  gemini: "https://aistudio.google.com/apikey",
+  xai: "https://console.x.ai/",
+  moonshot: "https://platform.moonshot.ai/console/api-keys",
+  together: "https://api.together.ai/settings/api-keys",
+  fireworks: "https://fireworks.ai/account/api-keys",
+  cerebras: "https://cloud.cerebras.ai/",
+  perplexity: "https://www.perplexity.ai/settings/api",
+  nvidia: "https://build.nvidia.com/",
+  "vercel-gateway": "https://vercel.com/ai-gateway",
+  zai: "https://z.ai/manage-apikey/apikey-list",
+  dashscope: "https://modelstudio.console.alibabacloud.com/",
+};
+
 /** Endpoint presets only. Models are always discovered from the endpoint, never listed here. */
 export const PRESETS: Preset[] = [
   { id: "anthropic", label: "Anthropic", kind: "anthropic", baseUrl: "https://api.anthropic.com/v1", local: false, needsKey: true, docs: "https://docs.anthropic.com" },
@@ -27,7 +43,7 @@ export const PRESETS: Preset[] = [
   { id: "gemini", label: "Google Gemini", kind: "openai-compat", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", local: false, needsKey: true, note: "Uses Google's OpenAI-compatible endpoint" },
   { id: "xai", label: "xAI (Grok)", kind: "openai-compat", baseUrl: "https://api.x.ai/v1", local: false, needsKey: true },
   { id: "moonshot", label: "Moonshot (Kimi)", kind: "openai-compat", baseUrl: "https://api.moonshot.ai/v1", local: false, needsKey: true },
-  { id: "openrouter", label: "OpenRouter", kind: "openai-compat", baseUrl: "https://openrouter.ai/api/v1", local: false, needsKey: true, note: "Hundreds of models; reports pricing and context size. Use “Sign in with OpenRouter” to create a key without copying it.", headers: { "HTTP-Referer": "https://github.com/CartyChris/omniforge-re", "X-Title": "OmniForge RE" }, keyUrl: "https://openrouter.ai/settings/keys" },
+  { id: "openrouter", label: "OpenRouter", kind: "openai-compat", baseUrl: "https://openrouter.ai/api/v1", local: false, needsKey: true, note: "Free and paid models with live pricing and context sizes. Only catalog entries priced at zero are free; rate limits apply, and paid fallbacks cost money. Use “Sign in with OpenRouter” to create a key without copying it.", headers: { "HTTP-Referer": "https://github.com/CartyChris/omniforge-re", "X-Title": "OmniForge RE" }, keyUrl: "https://openrouter.ai/settings/keys" },
   { id: "groq", label: "Groq", kind: "openai-compat", baseUrl: "https://api.groq.com/openai/v1", local: false, needsKey: true, keyUrl: "https://console.groq.com/keys" },
   { id: "mistral", label: "Mistral", kind: "openai-compat", baseUrl: "https://api.mistral.ai/v1", local: false, needsKey: true, keyUrl: "https://console.mistral.ai/api-keys" },
   { id: "deepseek", label: "DeepSeek", kind: "openai-compat", baseUrl: "https://api.deepseek.com/v1", local: false, needsKey: true, keyUrl: "https://platform.deepseek.com/api_keys" },
@@ -46,8 +62,11 @@ export const PRESETS: Preset[] = [
   { id: "mlx", label: "MLX (mlx_lm.server)", kind: "openai-compat", baseUrl: "http://localhost:8080/v1", local: true, needsKey: false, note: "Same default port as llama.cpp; run one at a time or change the port" },
   { id: "unsloth", label: "Unsloth Studio", kind: "openai-compat", baseUrl: "http://localhost:8888/v1", local: true, needsKey: true, note: "Create an sk-unsloth-… key in Studio → Settings → API. The API port can differ from the UI port; probing tries 8888 and 8000." },
   { id: "vllm", label: "vLLM", kind: "openai-compat", baseUrl: "http://localhost:8000/v1", local: true, needsKey: false },
+  { id: "unaligned", label: "Unaligned", kind: "openai-compat", baseUrl: "https://api.unaligned.pw/openai/v1", local: false, needsKey: true, keyUrl: "https://unaligned.pw/dashboard", docs: "https://unaligned.pw/docs", note: "Paid, prepaid credits. Offers models advertised as uncensored; review its policies and pricing. Save your account ID securely: the provider says it cannot be recovered." },
+  { id: "venice", label: "Venice", kind: "openai-compat", baseUrl: "https://api.venice.ai/api/v1", local: false, needsKey: true, keyUrl: "https://venice.ai/settings/api", docs: "https://docs.venice.ai", note: "Paid API with private and unrestricted model options. Capabilities and data handling differ by model; check the provider documentation." },
+  { id: "chutes", label: "Chutes", kind: "openai-compat", baseUrl: "https://llm.chutes.ai/v1", local: false, needsKey: true, keyUrl: "https://chutes.ai", docs: "https://chutes.ai/docs", note: "Pay-as-you-go open-model inference. Model availability, tool support and prices come from the provider, not an uncensored guarantee." },
   { id: "custom", label: "Custom OpenAI-compatible", kind: "openai-compat", baseUrl: "https://", local: false, needsKey: false },
-];
+].map((p) => ({ ...p, keyUrl: p.keyUrl ?? KEY_URLS[p.id] })) as Preset[];
 
 export function configFromPreset(presetId: string, o: Partial<ProviderConfig> = {}): ProviderConfig {
   const p = PRESETS.find((x) => x.id === presetId) ?? PRESETS[PRESETS.length - 1]!;
