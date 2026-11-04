@@ -15,7 +15,8 @@ import { CSP as csp } from "./csp.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "../../..");
-const out = path.join(root, ".vercel/output");
+// Vercel resolves Build Output API files relative to its configured project root.
+const out = path.resolve(process.cwd(), ".vercel/output");
 fs.rmSync(out, { recursive: true, force: true });
 
 console.log("▶ building the web app");

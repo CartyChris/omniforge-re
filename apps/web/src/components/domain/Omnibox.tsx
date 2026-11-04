@@ -49,9 +49,9 @@ export function Omnibox({ autoFocus, compact, onStarted }: { autoFocus?: boolean
       <div className="flex items-center gap-2">
         <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent">{d.kind === "repo" ? <GitFork className="size-5" /> : <Globe className="size-5" />}</div>
         <textarea value={text} onChange={(e) => setText(e.target.value)} rows={1} autoFocus={autoFocus} aria-label="Website URL, GitHub repository, or files to analyse" spellCheck={false}
-          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }}
+          onKeyDown={(e) => { if (e.nativeEvent.isComposing || e.keyCode === 229) return; if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }}
           placeholder="Paste a website or GitHub repo URL…"
-          className="h-10 min-h-10 flex-1 resize-none bg-transparent py-2.5 text-[15px] leading-5 outline-none placeholder:text-faint" style={{ height: text.includes("\n") ? Math.min(160, 24 * (text.split("\n").length + 1)) : undefined }} />
+          className="h-16 min-h-11 min-w-0 flex-1 resize-none bg-transparent py-2.5 text-base leading-5 outline-none placeholder:text-faint sm:h-11" style={{ height: text.includes("\n") ? Math.min(160, 24 * (text.split("\n").length + 1)) : undefined }} />
         <Button variant="primary" size="lg" className="shrink-0" aria-label={d.kind === "repo" ? "Rip" : "Analyze"} onClick={submit} disabled={d.kind === "empty"} icon={<ArrowRight className="size-4" />}><span className="hidden sm:inline">{d.kind === "repo" ? "Rip" : "Analyze"}</span></Button>
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2 px-1 pb-0.5">
@@ -60,8 +60,8 @@ export function Omnibox({ autoFocus, compact, onStarted }: { autoFocus?: boolean
         <div className="ml-auto flex items-center gap-1">
           <input ref={fileRef} type="file" multiple hidden onChange={async (e) => { files(await collectFiles(e.target.files ?? [])); e.target.value = ""; }} />
           <input ref={dirRef} type="file" hidden multiple onChange={async (e) => { files(await collectFiles(e.target.files ?? [])); e.target.value = ""; }} />
-          <Button size="xs" variant="ghost" icon={<FileArchive className="size-3.5" />} onClick={() => fileRef.current?.click()}>Files / ZIP</Button>
-          <Button size="xs" variant="ghost" icon={<FolderUp className="size-3.5" />} onClick={() => dirRef.current?.click()}>Folder</Button>
+          <Button size="xs" className="min-h-11" variant="ghost" icon={<FileArchive className="size-3.5" />} onClick={() => fileRef.current?.click()}>Files / ZIP</Button>
+          <Button size="xs" className="min-h-11" variant="ghost" icon={<FolderUp className="size-3.5" />} onClick={() => dirRef.current?.click()}>Folder</Button>
         </div>
       </div>
       {drag && <div className="pointer-events-none mt-2 flex items-center justify-center gap-2 rounded-xl border border-dashed border-accent/60 bg-accent-soft py-4 text-sm text-accent"><Upload className="size-4" />Drop to analyse</div>}

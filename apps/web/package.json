@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "dev:api": "tsx ../../packages/server/src/dev.ts",
-    "build": "node scripts/build-api.mjs && tsc --noEmit && vite build",
+    "build": "tsc --noEmit && node scripts/build-api.mjs",
     "build:ui": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
