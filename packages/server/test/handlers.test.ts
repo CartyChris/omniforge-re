@@ -1,4 +1,5 @@
 import http from "node:http";
+import { PRESETS } from "@omniforge/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { gzipSync, strToU8 } from "fflate";
 // @ts-expect-error plain ESM fixture shared with core tests and e2e
@@ -18,6 +19,12 @@ async function readSSE(res: Response) {
   }
   return events;
 }
+
+it("allows every named cloud provider through the guarded hosted forwarder", () => {
+  for (const preset of PRESETS.filter((p) => !p.local && p.id !== "custom")) {
+    expect(FORWARD_ALLOW.has(new URL(preset.baseUrl).hostname), preset.id).toBe(true);
+  }
+});
 
 describe("analyze handler", () => {
   let fx: ReturnType<typeof createFixture>;

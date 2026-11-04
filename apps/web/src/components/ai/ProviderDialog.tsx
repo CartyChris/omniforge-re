@@ -21,16 +21,19 @@ export function ProviderDialog({ open, onOpenChange, editing, initialPreset }: {
   const [test, setTest] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [manual, setManual] = useState("");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     if (!open) return;
+    setSearch("");
     const c = editing ?? newProviderConfig(initialPreset ?? "anthropic");
     setCfg(c); setPreset(c.preset ?? "custom"); setKey(""); setTest(null); setManual((c.manualModels as any[] | undefined)?.map((m) => m.id).join(", ") ?? "");
     vault.get(keyName(c.id)).then((k) => setKeyStored(!!k)).catch(() => setKeyStored(false));
   }, [open, editing, initialPreset]);
 
   const p = PRESETS.find((x) => x.id === preset);
-  const choose = (id: string) => { setPreset(id); setCfg(newProviderConfig(id, editing ? { id: cfg.id } : {})); setTest(null); };
+  const choose = (id: string) => { setPreset(id); setCfg(newProviderConfig(id, editing ? { id: cfg.id } : {})); setKey(""); setKeyStored(false); setManual(""); setTest(null); };
+  const matches = PRESETS.filter((x) => `${x.label} ${BLURB[x.id] ?? ""} ${x.note ?? ""}`.toLowerCase().includes(search.trim().toLowerCase()));
   const run = async () => {
     setBusy(true); setTest(null);
     const k = key || (await vault.get(keyName(cfg.id)).catch(() => undefined));
@@ -54,18 +57,28 @@ export function ProviderDialog({ open, onOpenChange, editing, initialPreset }: {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent title={editing ? `Edit ${cfg.label}` : "Connect an AI provider"} description="Models are discovered from the provider — no list is hardcoded. Keys are encrypted on this device." className="max-w-2xl">
+      <DialogContent title={editing ? `Edit ${cfg.label}` : "Connect an AI provider"} description="Models are discovered from the provider — no list is hardcoded. Keys are encrypted on this device." className="max-w-2xl [&_input]:text-base [&_button]:min-h-11">
         <div className="space-y-5">
           {!editing && (
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {PRESETS.map((x) => (
-                <button key={x.id} onClick={() => choose(x.id)} className={cn("rounded-xl border p-3 text-left transition", preset === x.id ? "border-accent bg-accent-soft" : "border-line bg-bg hover:border-line-strong")}>
+            <div className="space-y-3">
+              <Field label="Find a provider"><Input className="text-base" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search providers or uncensored options" /></Field>
+              <p className="text-xs text-muted">OpenRouter offers free and paid catalog entries. Local servers have no per-token API charge, but require your own hardware. Provider policies and limits still apply.</p>
+              <div className="grid max-h-64 grid-cols-2 gap-2 overflow-y-auto sm:grid-cols-3">
+              {matches.map((x) => (
+                <button key={x.id} aria-pressed={preset === x.id} onClick={() => choose(x.id)} className={cn("rounded-xl border p-3 text-left transition", preset === x.id ? "border-accent bg-accent-soft" : "border-line bg-bg hover:border-line-strong")}>
                   <div className="flex items-center justify-between gap-1"><span className="truncate text-[13px] font-semibold">{x.label}</span>{x.local && <Badge tone="teal">local</Badge>}</div>
-                  <p className="mt-1 line-clamp-2 text-[11px] text-muted">{BLURB[x.id]}</p>
+                  <p className="mt-1 line-clamp-2 text-[11px] text-muted">{BLURB[x.id] ?? x.note}</p>
                 </button>
               ))}
+              </div>
+              {matches.length === 0 && <p role="status" className="text-sm text-muted">No matching providers. Try another search or use Custom OpenAI-compatible.</p>}
             </div>
           )}
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-line p-3 text-sm">
+            <span className="font-medium">{p?.label}</span>
+            {p?.keyUrl && <a className="inline-flex min-h-11 items-center gap-1 text-accent underline" href={p.keyUrl} target="_blank" rel="noopener noreferrer">Sign up / get API key <ExternalLink aria-hidden="true" className="size-4" /></a>}
+            {p?.docs && <a className="inline-flex min-h-11 items-center gap-1 text-muted underline" href={p.docs} target="_blank" rel="noopener noreferrer">API docs <ExternalLink aria-hidden="true" className="size-4" /></a>}
+          </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Name"><Input value={cfg.label} onChange={(e) => setCfg({ ...cfg, label: e.target.value })} /></Field>
             <Field label="Endpoint" hint={p?.note}><Input value={cfg.baseUrl} onChange={(e) => setCfg({ ...cfg, baseUrl: e.target.value })} spellCheck={false} /></Field>
@@ -82,7 +95,7 @@ export function ProviderDialog({ open, onOpenChange, editing, initialPreset }: {
           </div>
           {test && <div className={cn("flex items-start gap-2 rounded-lg border p-3 text-[13px]", test.ok ? "border-ok/30 bg-ok/10 text-ok" : "border-bad/30 bg-bad/10 text-bad")}>{test.ok ? <CheckCircle2 className="mt-0.5 size-4 shrink-0" /> : <XCircle className="mt-0.5 size-4 shrink-0" />}<span className="whitespace-pre-line break-words">{test.text}</span></div>}
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex gap-2">{editing && <Button variant="danger" onClick={remove}>Remove</Button>}{preset === "unsloth" && <Button variant="ghost" size="sm" onClick={() => setCfg({ ...cfg, baseUrl: cfg.baseUrl.includes("8888") ? "http://localhost:8000/v1" : "http://localhost:8888/v1" })}>Try other port ({cfg.baseUrl.includes("8888") ? "8000" : "8888"})</Button>}{p?.id === "anthropic" && <a className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">Get a key <ExternalLink className="size-3" /></a>}</div>
+            <div className="flex gap-2">{editing && <Button variant="danger" onClick={remove}>Remove</Button>}{preset === "unsloth" && <Button variant="ghost" size="sm" onClick={() => setCfg({ ...cfg, baseUrl: cfg.baseUrl.includes("8888") ? "http://localhost:8000/v1" : "http://localhost:8888/v1" })}>Try other port ({cfg.baseUrl.includes("8888") ? "8000" : "8888"})</Button>}</div>
             <div className="flex gap-2"><Button onClick={run} loading={busy}>Test connection</Button><Button variant="primary" onClick={save} loading={busy} disabled={!cfg.baseUrl || cfg.baseUrl === "https://"}>Save</Button></div>
           </div>
         </div>

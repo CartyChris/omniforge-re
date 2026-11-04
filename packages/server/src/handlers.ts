@@ -149,6 +149,7 @@ export const FORWARD_ALLOW = new Set([
   "api.anthropic.com", "api.openai.com", "generativelanguage.googleapis.com", "api.x.ai", "api.moonshot.ai", "api.moonshot.cn", "openrouter.ai",
   "api.vercel.com", "api.github.com", "api.osv.dev", "api.mistral.ai", "api.groq.com", "api.together.xyz", "api.deepseek.com",
   "api.fireworks.ai", "api.cerebras.ai", "api.perplexity.ai", "router.huggingface.co", "integrate.api.nvidia.com", "ai-gateway.vercel.sh", "api.z.ai", "dashscope-intl.aliyuncs.com",
+  "api.unaligned.pw", "api.venice.ai", "llm.chutes.ai",
   "api.netlify.com", "api.cloudflare.com", // static-site deploy targets (Netlify ZIP deploys, Cloudflare Pages Direct Upload)
 ]);
 

@@ -94,14 +94,15 @@ describe("MCP servers for an agent run", () => {
     expect(() => mcpConfigJson([{ name: "x", command: "bash" }])).toThrow(/cannot be used/);
     expect(describeMcpServer(ok)).toBe("docs: npx -y some-mcp@1.2.3");
   });
-  it("every preset is valid, pinned to an exact version, and passes the same checks as user input", () => {
-    expect(MCP_PRESETS.map((p) => p.id)).toEqual(["chrome-devtools", "playwright", "context7"]);
+  it("presets use pinned packages or the explicitly installed REA CLI and pass input checks", () => {
+    expect(MCP_PRESETS.map((p) => p.id)).toEqual(["rea", "chrome-devtools", "playwright", "context7"]);
     for (const p of MCP_PRESETS) {
       expect(mcpServerProblem(p.server), p.id).toBeNull();
-      expect("command" in p.server && p.server.args!.some((a) => /@\d+\.\d+\.\d+$/.test(a)), `${p.id} is pinned`).toBe(true);
+      if (p.id === "rea") expect(p.server).toEqual({ name: "rea", command: "rea", args: ["mcp"] });
+      else expect("command" in p.server && p.server.args!.some((a) => /@\d+\.\d+\.\d+$/.test(a)), `${p.id} is pinned`).toBe(true);
       expect(p.server.name).toBe(p.id);
     }
-    const cd = MCP_PRESETS[0]!.server as { args: string[] }; expect(cd.args).toEqual(expect.arrayContaining(["--no-usage-statistics", "--no-performance-crux"]));
+    const cd = MCP_PRESETS.find((p) => p.id === "chrome-devtools")!.server as { args: string[] }; expect(cd.args).toEqual(expect.arrayContaining(["--no-usage-statistics", "--no-performance-crux"]));
   });
   it("summarises MCP tool calls readably", () => {
     const ev = normalizeClaudeLine(JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", id: "t1", name: "mcp__chrome-devtools__take_snapshot", input: {} }] } }));
