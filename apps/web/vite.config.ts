@@ -27,7 +27,7 @@ function treeSitterAssets(): Plugin {
 export default defineConfig({
   plugins: [react(), tailwind(), treeSitterAssets()],
   resolve: { alias: { "@codesandbox/nodebox": path.resolve(__dirname, "src/lib/nodebox-stub.ts"), "@": path.resolve(__dirname, "src") } }, // Nodebox: licence forbids our use; see nodebox-stub.ts
-  server: { port: 5173, proxy: { "/api": { target: "http://127.0.0.1:8787", changeOrigin: false } } },
+  server: { host: "0.0.0.0", port: 5173, strictPort: true, allowedHosts: ["workspace-ijwhnkin.v0.build"], proxy: { "/api": { target: "http://127.0.0.1:8787", changeOrigin: false } } },
   preview: { port: 5173, strictPort: true, proxy: { "/api": { target: "http://127.0.0.1:8787", changeOrigin: false } } },
   build: {
     target: "es2022",
