@@ -244,6 +244,21 @@ describe("privileged capabilities through the bridge (desktop UI token)", () => 
     } finally { srv.close(); }
   }, 120_000);
 
+  it("validates Coding Plan credentials and sends them only to the Claude Code process", async () => {
+    const proj = path.join(tmp, "zai-proj"); fs.mkdirSync(proj);
+    fs.writeFileSync(path.join(proj, "index.txt"), "project");
+    const root = (await ui("POST", "/bridge/roots", { path: proj, writable: false })).json;
+    const body = { cli: "claude-code", root: root.id, prompt: "VERIFY_ZAI_SUBSCRIPTION_ROUTING", model: "glm-5.3" };
+    for (const key of ["", "bad\nkey", "x".repeat(401)]) {
+      expect((await ui("POST", "/bridge/agent/run", { ...body, zai: { key } })).status).toBe(400);
+    }
+    expect((await ui("POST", "/bridge/agent/run", { ...body, model: "claude-sonnet", zai: { key: "test-plan-key" } })).status).toBe(400);
+    const result = await ui("POST", "/bridge/agent/run", { ...body, zai: { key: "test-plan-key" } });
+    expect(result.status).toBe(200);
+    expect(result.text).toContain("subscription route verified");
+    expect(result.text).not.toContain("test-plan-key");
+  }, 30_000);
+
   it("agent mode over the bridge: the CLI edits an isolated copy; changes are reviewed, then applied with a backup; conflicts and read-only folders are respected", async () => {
     const proj = path.join(tmp, "agent-proj"); fs.mkdirSync(path.join(proj, "src"), { recursive: true });
     fs.writeFileSync(path.join(proj, "src/app.js"), "console.log(1);\n"); fs.writeFileSync(path.join(proj, "old.txt"), "old\n"); fs.writeFileSync(path.join(proj, ".env"), "SECRET=1\n");

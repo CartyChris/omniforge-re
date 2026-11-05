@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { Badge, Button, Card, CardBody, CardHeader, CardTitle, EmptyState, Input, Segmented, StatusDot } from "@/components/ui/primitives";
 import { Select, Switch } from "@/components/ui/overlay";
 import { ProviderDialog } from "./ProviderDialog";
+import { SubscriptionConnections } from "./SubscriptionConnections";
 
 export function ProvidersPanel() {
   const { providers, setProviders, models, modelErrors, bridgeInfo, modelsLoading } = useApp();
@@ -20,6 +21,7 @@ export function ProvidersPanel() {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3"><p className="max-w-xl text-[13px] text-muted">Connect any mix of cloud and local models. OmniForge never hardcodes a model list — it asks each provider what it offers.</p><div className="flex gap-2"><Button variant="ghost" size="sm" loading={modelsLoading} icon={<RefreshCw className="size-4" />} onClick={() => refreshModels()}>Refresh models</Button><Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setDlg({})}>Add provider</Button></div></div>
+      <SubscriptionConnections />
       {providers.length === 0 && clis.length === 0 ? <Card><EmptyState icon={<Bot className="size-5" />} title="No AI providers yet" body="Add an API key (Anthropic, OpenAI, Gemini, xAI, Moonshot, OpenRouter…) or a local runtime. Analysis, Repo Rip cloning and meshing work without any."
         action={<div className="flex flex-wrap justify-center gap-2">{["anthropic", "openai", "ollama", "openrouter"].map((id) => <Button key={id} variant="secondary" size="sm" onClick={() => setDlg({ preset: id })}>{PRESETS.find((p) => p.id === id)?.label}</Button>)}</div>} /></Card>
         : <div className="grid gap-3 md:grid-cols-2">

@@ -10,7 +10,12 @@ out({ type: "system", subtype: "init", model: "fake-model", tools: ["Read", "Edi
 const tool = (name, input) => out({ type: "assistant", message: { content: [{ type: "tool_use", name, input }] } });
 const done = (text = "done") => { out({ type: "assistant", message: { content: [{ type: "text", text }] } }); out({ type: "result", subtype: "success", is_error: false, result: text, total_cost_usd: 0.01, num_turns: 2, duration_ms: 5 }); };
 const w = (p, c) => { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, c); tool("Write", { file_path: p }); };
-if (mode === "edit") {
+if (prompt.includes("VERIFY_ZAI_SUBSCRIPTION_ROUTING")) {
+  const env = process.env;
+  const valid = env.ANTHROPIC_BASE_URL === "https://api.z.ai/api/anthropic" && env.ANTHROPIC_AUTH_TOKEN === "test-plan-key" && env.ANTHROPIC_API_KEY === "" && env.CLAUDE_CODE_OAUTH_TOKEN === "" && env.ANTHROPIC_DEFAULT_HAIKU_MODEL === "glm-5.3";
+  if (!valid) process.exit(2);
+  done("subscription route verified");
+} else if (mode === "edit") {
   fs.appendFileSync("src/app.js", "// edited by agent\n"); tool("Edit", { file_path: "src/app.js" });
   w("src/new.js", "export const n = 1;\n"); fs.unlinkSync("old.txt");
   fs.writeFileSync("logo.bin", Buffer.from([0, 1, 2, 3, 255])); done("edited " + prompt.slice(0, 20));
