@@ -36,4 +36,8 @@ test("screenshots", async ({ page }) => {
   await clean(); await page.screenshot({ path: `${OUT}investigation.png` });
   await page.getByRole("tab", { name: /^Graph/ }).click(); await expect(page.locator(".react-flow__node").first()).toBeVisible(); await page.waitForTimeout(800);
   await clean(); await page.screenshot({ path: `${OUT}graph.png` });
+  await page.goto("/#/settings");
+  await page.getByRole("radio", { name: "Nord theme" }).click(); await page.getByRole("radio", { name: "Cyan accent" }).click();
+  await page.getByText("Accent colour").scrollIntoViewIfNeeded(); await page.mouse.move(0, 0); await page.waitForTimeout(300);
+  await clean(); await page.screenshot({ path: `${OUT}themes.png` });
 });

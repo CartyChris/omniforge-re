@@ -13,6 +13,8 @@ The Mac app adds everything a browser can't do: local folders and installed apps
 | [![AI Chat: the orchestrator analysed a site, ran two subagents and answered from the evidence](docs/screenshots/ai-chat.png)](docs/screenshots/ai-chat.png) | [![Dashboard with a completed investigation](docs/screenshots/dashboard.png)](docs/screenshots/dashboard.png) |
 | **Investigation — coverage, findings, evidence** | **Site graph** |
 | [![Investigation overview with coverage checks and findings](docs/screenshots/investigation.png)](docs/screenshots/investigation.png) | [![Sitemap graph of the analysed site](docs/screenshots/graph.png)](docs/screenshots/graph.png) |
+| **Themes — 11 palettes + System, 10 accents** | |
+| [![Settings → Appearance with the Nord theme and cyan accent](docs/screenshots/themes.png)](docs/screenshots/themes.png) | |
 
 <sub>Screenshots of the production build analysing the repository's test fixture site; the chat replies come from a scripted test model. Regenerate with `OMNIFORGE_SCREENSHOTS=1 pnpm --filter @omniforge/web exec playwright test e2e/screenshots.spec.ts --project=desktop`.</sub>
 
