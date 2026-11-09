@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Link, useNavigate } from "react-router";
-import { ArrowUpRight, Bot, Boxes, Cpu, GitFork, Microscope, Plug, Puzzle, Rocket, Sparkles } from "lucide-react";
+import { ArrowUpRight, Bot, Boxes, Cpu, GitFork, Microscope, Plug, Puzzle, Rocket, Sparkles, MessagesSquare } from "lucide-react";
 import type { Investigation } from "@omniforge/core";
 import { useApp } from "@/lib/store";
 import { ago, fmtNum } from "@/lib/utils";
@@ -26,7 +26,7 @@ export default function Dashboard() {
           <div className="space-y-2"><h1 className="text-balance text-2xl font-semibold tracking-tight sm:text-4xl">Understand any app. <span className="text-gradient">Rebuild it better.</span></h1><p className="mx-auto max-w-xl text-pretty text-sm text-muted sm:text-[15px]">Paste a website or GitHub repo, or drop files. You get an evidence-linked analysis — then extract features, re-create it in any stack, or ship it.</p></div>
           <Omnibox />
           <div className="flex flex-wrap justify-center gap-2 text-xs">
-            {[{ t: "Rip a GitHub repo", to: "/repo-rip", i: GitFork }, { t: "Build from a prompt", to: "/studio", i: Sparkles }, { t: "Browse features", to: "/features", i: Puzzle }].map((q) => <Link key={q.to} to={q.to} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-bg px-3 py-1.5 text-muted transition hover:border-line-strong hover:text-fg"><q.i className="size-3.5" />{q.t}</Link>)}
+            {[{ t: "Ask the AI orchestrator", to: "/chat", i: MessagesSquare }, { t: "Rip a GitHub repo", to: "/repo-rip", i: GitFork }, { t: "Build from a prompt", to: "/studio", i: Sparkles }, { t: "Browse features", to: "/features", i: Puzzle }].map((q) => <Link key={q.to} to={q.to} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-bg px-3 py-1.5 text-muted transition hover:border-line-strong hover:text-fg"><q.i className="size-3.5" />{q.t}</Link>)}
           </div>
         </div>
       </section>

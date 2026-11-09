@@ -1,9 +1,10 @@
-import { Bot, Boxes, CodeXml, Cpu, GitFork, LayoutDashboard, Microscope, Plug, Puzzle, Rocket, ScanSearch, Settings, type LucideIcon } from "lucide-react";
+import { Bot, Boxes, MessagesSquare, CodeXml, Cpu, GitFork, LayoutDashboard, Microscope, Plug, Puzzle, Rocket, ScanSearch, Settings, type LucideIcon } from "lucide-react";
 
 export interface NavItem { id: string; to: string; label: string; short?: string; icon: LucideIcon; chord: string; desc: string; mobile?: boolean }
 export const NAV: NavItem[] = [
   { id: "dashboard", to: "/", label: "Dashboard", icon: LayoutDashboard, chord: "d", desc: "Projects, jobs, providers and status at a glance", mobile: true },
   { id: "analyze", to: "/analyze", label: "Analyze", icon: ScanSearch, chord: "a", desc: "Paste a URL or repo, or drop files — start an investigation", mobile: true },
+  { id: "chat", to: "/chat", label: "AI Chat", short: "Chat", icon: MessagesSquare, chord: "c", desc: "Chat with one model, or an orchestrator that analyses, delegates to subagents and rebuilds", mobile: true },
   { id: "repo-rip", to: "/repo-rip", label: "Repo Rip", icon: GitFork, chord: "r", desc: "Clone, re-create or mesh GitHub repositories" },
   { id: "investigations", to: "/investigations", label: "Investigations", short: "Cases", icon: Microscope, chord: "i", desc: "Evidence-backed analysis reports, graphs and features", mobile: true },
   { id: "applications", to: "/applications", label: "Applications", short: "Apps", icon: Boxes, chord: "p", desc: "Your projects — open, import, export, checkpoint" },

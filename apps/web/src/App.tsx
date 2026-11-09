@@ -17,6 +17,7 @@ const InvestigationDetail = lazy(() => import("@/pages/InvestigationDetail"));
 const Applications = lazy(() => import("@/pages/Applications"));
 const FeatureLibrary = lazy(() => import("@/pages/FeatureLibrary"));
 const AIStudio = lazy(() => import("@/pages/AIStudio"));
+const Chat = lazy(() => import("@/pages/Chat"));
 const Workspace = lazy(() => import("@/pages/Workspace"));
 const LocalModels = lazy(() => import("@/pages/LocalModels"));
 const Integrations = lazy(() => import("@/pages/Integrations"));
@@ -49,6 +50,7 @@ export default function App() {
             <Route path="applications" element={<Applications />} />
             <Route path="features" element={<FeatureLibrary />} />
             <Route path="studio" element={<AIStudio />} />
+            <Route path="chat" element={<Chat />} />
             <Route path="workspace" element={<Workspace />} />
             <Route path="models" element={<LocalModels />} />
             <Route path="integrations" element={<Integrations />} />

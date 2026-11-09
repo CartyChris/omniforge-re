@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { noErrors, prepare, underProductionCsp } from "./helpers";
 
-const ROUTES = ["", "analyze", "repo-rip", "investigations", "applications", "features", "studio", "workspace", "models", "integrations", "deployments", "settings"];
+const ROUTES = ["", "analyze", "chat", "repo-rip", "investigations", "applications", "features", "studio", "workspace", "models", "integrations", "deployments", "settings"];
 
 for (const r of ROUTES) {
   test(`/${r || "dashboard"}: renders under the production CSP, no console errors, no horizontal scroll, no serious a11y violations`, async ({ page }) => {
