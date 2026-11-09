@@ -105,12 +105,18 @@ test("uploaded Python/Java/Go source: HTTP routes are parsed with tree-sitter in
     "shop/Ctl.java": strToU8('@RestController\n@RequestMapping("/api")\nclass Ctl {\n  @GetMapping("/ping") String ping() { return ""; }\n}\n'),
     "shop/srv.go": strToU8('package main\nfunc main() { r.GET("/health", h) }\n'),
     "shop/README.md": strToU8("# shop"),
+    "shop/settings.py": strToU8(`HF_TOKEN = "${["hf", "_"].join("")}ZpLkQmWvNrTsBxYcHgDfJuKeAoIqRsMtLw"\n`), // assembled at run time: no secret-shaped literal in the repo
   });
   await page.goto("/#/analyze");
   const grammars: string[] = []; page.on("request", (r) => { if (r.url().includes("/tree-sitter/")) grammars.push(r.url().split("/").pop()!); });
   await page.locator("input[type=file]").first().setInputFiles({ name: "shop.zip", mimeType: "application/zip", buffer: Buffer.from(zip) });
   await page.getByText("Open results").waitFor({ timeout: 90_000 });
+  await expect(page.getByText(/secret scanning: Rust\/WebAssembly engine/).first()).toBeAttached(); // the Rust engine ran in the worker under the production CSP
   await page.getByRole("button", { name: "Open results" }).click();
+  await page.getByRole("tab", { name: /^Files/ }).click(); await page.getByText("settings.py", { exact: true }).first().click();
+  await expect(page.getByText(/REDACTED:gitleaks:huggingface-access-token/).first()).toBeVisible();
+  expect(await page.content()).not.toContain("ZpLkQmWvNrTsBxYcHgDfJuKeAoIqRsMtLw");
+  await page.keyboard.press("Escape");
   await page.getByRole("tab", { name: /^APIs/ }).click();
   for (const p of ["/users/{id}", "/api/ping", "/health"]) await expect(page.getByText(p, { exact: true }).first()).toBeVisible();
   // only the grammars for the languages present were fetched (not all eight)

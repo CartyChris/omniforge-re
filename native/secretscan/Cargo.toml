@@ -1,0 +1,22 @@
+[package]
+name = "secretscan"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "OmniForge RE secret-scan engine: Aho-Corasick keyword prefilter + linear-time regex over gitleaks rule data, for WebAssembly"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# ASCII-only, byte-oriented matching (rule patterns are ASCII); unicode tables off keeps the .wasm small.
+regex = { version = "1.12", default-features = false, features = ["std", "perf"] }
+aho-corasick = { version = "1.1", default-features = false, features = ["std", "perf-literal"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

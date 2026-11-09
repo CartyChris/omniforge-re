@@ -7,6 +7,9 @@ import { analyzeSnapshot, assessRip, detectLicense, fetchRepoSnapshot, investiga
 import { HttpError, bytesToB64, err, json, readJson, sse } from "./http.js";
 import { nodeNet } from "./net.js";
 import { loadRetireRepository } from "./retire.js";
+import { installNativeSecretScan } from "@omniforge/core/secretscan-wasm";
+// Secret scanning (redaction of analysed material) runs on the Rust/WebAssembly engine; same results as JS, faster.
+installNativeSecretScan();
 
 export type Mode = "hosted" | "local";
 export interface HandlerOptions {

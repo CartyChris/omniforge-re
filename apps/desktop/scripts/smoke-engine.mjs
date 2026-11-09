@@ -50,6 +50,8 @@ const proj = fs.mkdtempSync(path.join(os.tmpdir(), "omni-smoke-"));
 fs.writeFileSync(path.join(proj, "main.py"), 'from fastapi import FastAPI\napp = FastAPI()\n@app.get("/users/{id}")\ndef get_user(id: int):\n    return 1\n');
 fs.writeFileSync(path.join(proj, "Ctl.java"), '@RestController\n@RequestMapping("/api")\nclass Ctl {\n  @GetMapping("/ping") String ping() { return ""; }\n}\n');
 fs.writeFileSync(path.join(proj, "srv.go"), 'package main\nfunc main() { r.GET("/health", h) }\n');
+const FAKE = ["hf", "_"].join("") + "ZpLkQmWvNrTsBxYcHgDfJuKeAoIqRsMtLw"; // assembled at run time: no secret-shaped literal in the repo
+fs.writeFileSync(path.join(proj, "settings.py"), `HF_TOKEN = "${FAKE}"\n`);
 const H = { authorization: `Bearer ${TOKEN}`, origin: "tauri://localhost", "content-type": "application/json", "x-omniforge-bridge": "1" };
 const rootRes = await fetch(`http://127.0.0.1:${PORT}/bridge/roots`, { method: "POST", headers: H, body: JSON.stringify({ path: proj }) });
 const root = await rootRes.json();
@@ -57,6 +59,11 @@ const folderRes = await fetch(`http://127.0.0.1:${PORT}/bridge/analyze-folder`, 
 const folder = folderRes.ok ? await folderRes.json() : null;
 const got = (folder?.endpoints ?? []).map((e) => `${e.method} ${e.url}`).sort();
 const want = ["GET /api/ping", "GET /health", "GET /users/{id}"];
+// secret scanning runs on the Rust/WebAssembly engine inside the compiled binary, and the planted key never leaves it
+const health = await (await fetch(`http://127.0.0.1:${PORT}/bridge/health`)).json();
+if (health.secretScan !== "rust-wasm") problems.push(`secret-scan engine is ${health.secretScan}, expected rust-wasm`);
+if (JSON.stringify(folder ?? {}).includes(FAKE)) problems.push("a planted secret was returned unredacted by analyze-folder");
+else if (!JSON.stringify(folder ?? {}).includes("REDACTED:gitleaks:huggingface-access-token")) problems.push("the planted secret was not reported as redacted");
 if (JSON.stringify(got) !== JSON.stringify(want)) problems.push(`tree-sitter routes: got ${JSON.stringify(got)}, wanted ${JSON.stringify(want)}; structure check: ${JSON.stringify(folder?.coverage?.checks?.find((c) => c.id === "structure"))}`);
 fs.rmSync(proj, { recursive: true, force: true });
 // --- OmniForge as an MCP server (`<binary> mcp`): handshake, tool list, and a real analysis through the compiled binary

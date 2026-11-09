@@ -33,6 +33,10 @@ import { exchangeOpenRouterCode, openRouterAuthUrl, pkcePair } from "@omniforge/
 import { execFile } from "node:child_process";
 import crypto from "node:crypto";
 import { nodeStructureExtractor } from "@omniforge/structure/node";
+import { installNativeSecretScan } from "@omniforge/core/secretscan-wasm";
+import { secretScanEngineName } from "@omniforge/core";
+
+installNativeSecretScan(); // Rust/WebAssembly secret scanning in the desktop engine
 
 export interface BridgeOptions { port?: number; uiToken?: string; version?: string; allowedOrigins?: string[]; jobsDir?: string; reaDir?: string; /** tests only: drive this executable as "Claude Code" instead of the installed one */ agentCliPath?: string; /** tests only: drive these executables as the named agent CLIs */ agentCliPaths?: Record<string, string>; /** tests only: home folder to scan for Agent Skills */ skillsHome?: string; /** tests only: the OWASP Noir binary */ noirBin?: string; /** tests only: how sign-in pages are opened and codes exchanged */ openUrl?: (url: string) => void; oauthFetch?: typeof fetch }
 export interface Bridge { url: string; port: number; auth: BridgeAuth; roots: Roots; jobs: JobManager; close(): Promise<void> }
@@ -63,7 +67,7 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
     const ui = (): Principal => { if (!p) throw new AuthError(401, "Not authenticated."); if (p.kind !== "ui") throw new AuthError(403, "This action can only be approved from the OmniForge desktop app."); return p; };
     const root = (id: string) => roots.get(id);
 
-    if (is("GET", "/bridge/health")) return json({ ok: true, name: "omniforge-bridge", version, pairingRequired: true });
+    if (is("GET", "/bridge/health")) return json({ ok: true, name: "omniforge-bridge", version, pairingRequired: true, secretScan: secretScanEngineName() });
     if (is("POST", "/bridge/pair")) { const b = await readJson(req, 2000); const s = auth.pair(String(b.code ?? ""), req.headers.get("origin")); return json({ ...s, version }); }
     if (is("POST", "/bridge/ui/pairing-code")) { ui(); return json(auth.newPairingCode()); }
     if (is("GET", "/bridge/sessions")) { ui(); return json(auth.listSessions()); }

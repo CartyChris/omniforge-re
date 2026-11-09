@@ -21,6 +21,10 @@ jobs:
         run: pnpm typecheck
       - name: Unit + integration tests (core, server)
         run: pnpm test
+      # The Rust secret-scan engine (compiled to WebAssembly and embedded in core). The core tests check the embedded build
+      # matches these sources and returns exactly the JS reference's results.
+      - name: Secret-scan engine (Rust) unit tests
+        run: cargo test --release --locked --manifest-path native/secretscan/Cargo.toml
       - name: Install Chromium for the browser tests
         run: pnpm --filter @omniforge/web exec playwright install --with-deps chromium
       - name: Cargo check (desktop shell)

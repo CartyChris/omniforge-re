@@ -12,6 +12,10 @@
     "./node": {
       "types": "./src/node.ts",
       "default": "./src/node.ts"
+    },
+    "./secretscan-wasm": {
+      "types": "./src/util/secretscan-wasm.ts",
+      "default": "./src/util/secretscan-wasm.ts"
     }
   },
   "scripts": {

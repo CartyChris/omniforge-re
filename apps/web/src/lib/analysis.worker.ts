@@ -1,6 +1,11 @@
 /// <reference lib="webworker" />
 import { browserStructureExtractor } from "@omniforge/structure/browser";
 import { investigateSource, readArchive, safeEntryPath, stripCommonRoot, detectArchive, type InputFile } from "@omniforge/core";
+import { installNativeSecretScan } from "@omniforge/core/secretscan-wasm";
+import { secretScanEngineName } from "@omniforge/core";
+
+// secret scanning of uploaded code on the Rust/WebAssembly engine (a worker may compile WebAssembly synchronously)
+installNativeSecretScan();
 
 // grammars are fetched from /tree-sitter/ only when the upload contains Python, Go, Java, Rust, C# or JS/TS source
 const structure = browserStructureExtractor(new URL("tree-sitter/", self.location.origin + import.meta.env.BASE_URL).href);
@@ -31,7 +36,7 @@ self.onmessage = async (e: MessageEvent<In>) => {
       }
       if (total > 600_000_000) { notes.push("Stopped reading: total size limit (600 MB) reached."); break; }
     }
-    post({ type: "progress", message: `Analysing ${inputs.length} file(s)…` });
+    post({ type: "progress", message: `Analysing ${inputs.length} file(s)… (secret scanning: ${secretScanEngineName() === "rust-wasm" ? "Rust/WebAssembly engine" : "JavaScript engine"})` });
     const inv = await investigateSource(name, inputs, { kind: kind === "archive" ? "archive" : kind === "folder" ? "folder" : "files", origin, structure });
     inv.limitations.push(...notes);
     post({ type: "done", inv });

@@ -25,7 +25,7 @@ describe("gitleaks rules (data)", () => {
     expect(GITLEAKS.rules.length).toBe(221);
     const c = gitleaksRules();
     expect(c.skipped).toEqual([]);
-    expect(c.rules.every((r) => r.re.flags === "g")).toBe(true); // no engine-specific flags or modifiers
+    expect(c.rules.every((r) => r.re.flags === "dg")).toBe(true); // global + match indices only: no case/dotall flags or inline modifiers
   });
 
   it("finds each provider's key format and redacts only the secret", () => {
@@ -67,10 +67,10 @@ describe("gitleaks rules (data)", () => {
   it("no false positives on this repository's own source (≈1.4 MB of real TS/TSX), and fast enough to run on every file", () => {
     const roots = ["../src", "../../server/src", "../../../apps/web/src"].map((r) => path.join(__dirname, r));
     let files = 0, bytes = 0; const hits: string[] = []; const t0 = performance.now();
-    const walk = (d: string) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (/\.(ts|tsx|mjs|json)$/.test(e.name) && !e.name.startsWith("gitleaks-rules")) { const t = fs.readFileSync(p, "utf8"); files++; bytes += t.length; for (const l of findLeaks(t, { path: p })) hits.push(`${l.rule} ${p}`); } } };
+    const walk = (d: string) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (/\.(ts|tsx|mjs|json)$/.test(e.name) && !e.name.startsWith("gitleaks-rules") && !e.name.startsWith("secretscan-wasm") /* generated data blobs */) { const t = fs.readFileSync(p, "utf8"); files++; bytes += t.length; for (const l of findLeaks(t, { path: p })) hits.push(`${l.rule} ${p}`); } } };
     for (const r of roots) walk(r);
     expect(files).toBeGreaterThan(100); expect(bytes).toBeGreaterThan(1_000_000);
-    expect(hits).toEqual([]);
+    expect(hits, hits.join("\n")).toEqual([]);
     expect(performance.now() - t0).toBeLessThan(5_000);
   });
 
