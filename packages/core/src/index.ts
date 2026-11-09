@@ -1,5 +1,6 @@
 export * from "./schema.js";
 export * from "./util/index.js";
+export * from "./util/markdown-lite.js";
 export * from "./net/ssrf.js";
 export * from "./net/fetch.js";
 export * from "./crawl/robots.js";

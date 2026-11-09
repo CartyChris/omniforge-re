@@ -7,6 +7,7 @@ import { loadProviders, pickModel } from "@/lib/ai";
 import { cn } from "@/lib/utils";
 import { Button, Card, EmptyState, Textarea } from "@/components/ui/primitives";
 import { Select } from "@/components/ui/overlay";
+import { Markdown } from "@/components/ui/Markdown";
 
 const CONV = "chat:main";
 
@@ -47,7 +48,7 @@ export function ChatPanel() {
       </div>
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4" aria-live="polite">
         {msgs.length === 0 && stream === null && <div className="grid h-full place-items-center text-center text-sm text-muted"><div className="max-w-sm space-y-2"><Bot className="mx-auto size-6 text-accent" /><p>Chat with any connected model. Pick an agent role to give it that role's rules and expertise.</p><p className="text-xs text-faint">Pasted code and files are sent only to the provider you picked{settings.localOnly ? " (local-only mode: local models only)" : ""}.</p></div></div>}
-        {msgs.map((m) => <div key={m.id} className={cn("flex gap-3", m.role === "user" && "flex-row-reverse")}><div className={cn("grid size-7 shrink-0 place-items-center rounded-full", m.role === "user" ? "bg-overlay" : "bg-accent-soft text-accent")}>{m.role === "user" ? <User className="size-4" /> : <Bot className="size-4" />}</div><div className={cn("max-w-[85%] space-y-1.5 rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed", m.role === "user" ? "bg-accent text-accent-fg" : "border border-line bg-bg")}><div className="whitespace-pre-wrap break-words">{m.content}</div>{m.model && <div className="border-t border-line pt-1 text-[11px] text-faint">{m.model}</div>}</div></div>)}
+        {msgs.map((m) => <div key={m.id} className={cn("flex gap-3", m.role === "user" && "flex-row-reverse")}><div className={cn("grid size-7 shrink-0 place-items-center rounded-full", m.role === "user" ? "bg-overlay" : "bg-accent-soft text-accent")}>{m.role === "user" ? <User className="size-4" /> : <Bot className="size-4" />}</div><div className={cn("max-w-[85%] space-y-1.5 rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed", m.role === "user" ? "bg-accent text-accent-fg" : "border border-line bg-bg")}>{m.role === "assistant" ? <Markdown text={m.content} /> : <div className="whitespace-pre-wrap break-words">{m.content}</div>}{m.model && <div className="border-t border-line pt-1 text-[11px] text-faint">{m.model}</div>}</div></div>)}
         {stream !== null && <div className="flex gap-3"><div className="grid size-7 shrink-0 place-items-center rounded-full bg-accent-soft text-accent"><Bot className="size-4" /></div><div className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl border border-line bg-bg px-3.5 py-2.5 text-sm leading-relaxed">{stream || <span className="text-faint">Thinking…</span>}</div></div>}
         <div ref={end} />
       </div>

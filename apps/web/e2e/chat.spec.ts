@@ -17,7 +17,7 @@ test("AI Chat orchestrator: analyses a site, delegates to a subagent, answers fr
     if (/a subagent of OmniForge/.test(sysText(r))) return tools.length ? say(route, "Subagent report: the catalogue lists Widget and Gadget.") : toolCall(route, "search_investigation", { id: invId, query: "products widget gadget" });
     if (!tools.length) return toolCall(route, "analyze_url", { url: "http://127.0.0.1:4010/", max_pages: 12 });
     if (tools.length === 1) { invId = /Analysis finished: (\S+)/.exec(tools[0]!)?.[1] ?? ""; return toolCall(route, "delegate", { tasks: [{ role: "reverse", objective: "Which products does the analysed site sell?" }] }); }
-    return say(route, `The site sells Widget and Gadget (investigation ${invId}).`);
+    return say(route, `The site sells Widget and Gadget (investigation ${invId}).\n\n- **Widget** page\n- \`/products/gadget\`\n\n<img src=x onerror="window.__xss=1">`);
   });
 
   await page.goto("/#/chat");
@@ -26,6 +26,10 @@ test("AI Chat orchestrator: analyses a site, delegates to a subagent, answers fr
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page.getByText(/The site sells Widget and Gadget \(investigation /)).toBeVisible({ timeout: 90_000 });
   expect(invId).toMatch(/\S/);
+  // Markdown renders as elements; HTML in a reply stays text
+  const reply = page.getByTestId("chat-log");
+  await expect(reply.locator("li strong", { hasText: "Widget" })).toBeVisible(); await expect(reply.locator("li code", { hasText: "/products/gadget" })).toBeVisible();
+  await expect(reply.getByText('<img src=x onerror="window.__xss=1">')).toBeVisible(); expect(await page.evaluate(() => (window as unknown as { __xss?: number }).__xss)).toBeUndefined();
 
   // the trace shows the real steps, all finished
   const trace = page.getByTestId("chat-trace").last(); await trace.locator("summary").click();

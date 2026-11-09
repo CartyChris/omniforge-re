@@ -138,7 +138,7 @@ async function loop(p: { provider: Provider; model: ModelInfo; system: string; m
       else try { out = await tool.run(call.args ?? {}, { signal: p.signal, agent: p.agent }); good = !/^Error:/.test(out); }
       catch (e) { if ((e as Error).name === "AbortError") throw e; out = `Error: ${(e as Error).message}`; good = false; }
       p.trace?.push({ name: call.name, ok: good });
-      p.emit({ type: "tool_result", id: call.id, name: call.name, ok: good, summary: out.split("\n").find((l) => l.trim() && !l.startsWith("<<<"))?.slice(0, 200) ?? "", agent: p.agent });
+      p.emit({ type: "tool_result", id: call.id, name: call.name, ok: good, summary: out.split("\n").find((l) => l.trim() && !l.startsWith("<<<"))?.replace(/^#+\s*/, "").slice(0, 200) ?? "", agent: p.agent });
       return { call, out };
     }));
     for (const { call, out } of outs) p.messages.push({ role: "tool", toolCallId: call.id, name: call.name, content: ok(out) });

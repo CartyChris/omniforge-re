@@ -1,6 +1,20 @@
 # OmniForge RE
 
-Universal reverse-engineering and AI development studio. Point it at a website, a GitHub repo, a folder, an archive or an installed app and get an **evidence-linked analysis** (every claim says whether it was observed, recovered, reconstructed or inferred, with a coverage score computed from real checks). Then extract features, re-create the app in another stack, edit it in a built-in workspace with AI, and ship it to GitHub or Vercel.
+**Understand any app. Rebuild it better.** Point OmniForge at a website, a GitHub repo, a folder, an archive or an installed app and get an **evidence-linked analysis** — every claim says whether it was observed, recovered, reconstructed or inferred, with a coverage score computed from real checks. Then chat with an AI orchestrator about it, extract features, re-create the app in another stack, edit it in a built-in workspace with AI, and ship it to GitHub, Vercel, Netlify or Cloudflare.
+
+### ▶ Use it in your browser — **[omniforge-re.vercel.app](https://omniforge-re.vercel.app)**
+
+### ⬇ Download the Mac app — [**Apple Silicon (.dmg)**](https://github.com/CartyChris/omniforge-re/releases/latest/download/OmniForge-RE_apple-silicon.dmg) · [**Intel (.dmg)**](https://github.com/CartyChris/omniforge-re/releases/latest/download/OmniForge-RE_intel.dmg) · [all releases & checksums](https://github.com/CartyChris/omniforge-re/releases)
+
+The Mac app adds everything a browser can't do: local folders and installed apps, real-browser rendering, your installed AI coding CLIs (Claude Code, Codex, Gemini CLI, OpenCode, Aider) and local models. It is unsigned — the first time, **right-click → Open** ([details](#install-the-macos-app)).
+
+| AI Chat — orchestrator with subagents | Dashboard |
+|---|---|
+| [![AI Chat: the orchestrator analysed a site, ran two subagents and answered from the evidence](docs/screenshots/ai-chat.png)](docs/screenshots/ai-chat.png) | [![Dashboard with a completed investigation](docs/screenshots/dashboard.png)](docs/screenshots/dashboard.png) |
+| **Investigation — coverage, findings, evidence** | **Site graph** |
+| [![Investigation overview with coverage checks and findings](docs/screenshots/investigation.png)](docs/screenshots/investigation.png) | [![Sitemap graph of the analysed site](docs/screenshots/graph.png)](docs/screenshots/graph.png) |
+
+<sub>Screenshots of the production build analysing the repository's test fixture site; the chat replies come from a scripted test model. Regenerate with `OMNIFORGE_SCREENSHOTS=1 pnpm --filter @omniforge/web exec playwright test e2e/screenshots.spec.ts --project=desktop`.</sub>
 
 Two apps, one engine and one project format:
 
@@ -9,6 +23,8 @@ Two apps, one engine and one project format:
 | Analyse sites / repos / ZIPs | ✅ (static HTML; SSRF-guarded server functions) | ✅ + real Chromium rendering |
 | Local folders, installed apps, REA, AI CLIs, local models, git, terminal | — | ✅ via the local bridge |
 | Credentials | encrypted in the browser (AES-GCM) | macOS Keychain |
+
+**AI Chat** (new): talk to any single model, or to an **orchestrator** that analyses the URLs, GitHub repos and files you give it with OmniForge's own pipelines, hands independent questions to **parallel subagents**, answers from the evidence (cited by id) and — only after you approve — rebuilds the app with the build agents.
 
 **More than a crawler:** page copy is kept as Markdown for faithful rebuilds · jQuery/Angular/lodash/… versions and their known vulnerabilities are identified (retire.js rules) · Python/Java/Go/Rust/C#/TS source is parsed with tree-sitter · minified or obfuscated JS can be made readable in a sandbox (desktop) · a pixel + structure compare checks a rebuild against its reference · your installed **Claude Code, Codex CLI, Gemini CLI, OpenCode or Aider** can rebuild or edit a private copy of a folder (with its own sign-in, using your existing subscription), with a per-file diff you approve before anything is written, optionally with pinned **MCP** tools · OmniForge's own agents load **Agent Skills** (`SKILL.md`, from `~/.claude/skills` and friends on the Mac) and call **MCP servers** directly, with tool pinning · **Sign in with OpenRouter** (no key to paste) next to Anthropic, OpenAI, Gemini, xAI, Moonshot and local Ollama/LM Studio/llama.cpp/MLX/vLLM · **Ask AI** retrieves the evidence, page copy and source passages that match your question · on the Mac, **OWASP Noir** (if installed) adds endpoints from 50+ frameworks to folder analysis · secrets are redacted with our rules plus all 221 **gitleaks** rules · and OmniForge itself is an **MCP server** (`omniforge-bridge mcp`, setup on the Integrations page) so Claude Code, Cursor or Claude Desktop can analyse a site and ask for a rebuild brief.
 
@@ -25,21 +41,20 @@ pnpm e2e                          # Playwright, desktop + mobile, on the product
 ```
 Node ≥ 22.19, pnpm 10.
 
-## Deploy the web app to **your** Vercel account (chriscarty123@gmail.com)
+## The web app on Vercel
 
-The repository is a zero-config import: `vercel.json` carries the install/build/output settings (Build Output API: static UI + serverless functions + security headers).
+Live at **https://omniforge-re.vercel.app**; every push to `main` redeploys. Either project layout builds the same output (Build Output API: static UI + serverless functions + security headers):
 
-1. Sign in at <https://vercel.com> with chriscarty123@gmail.com. If GitHub isn't connected: *Account → Authentication → Connect GitHub* and grant access to `CartyChris/omniforge-re`.
-2. **Add New → Project → Import Git Repository → `CartyChris/omniforge-re`.**
-3. Leave **Root Directory** = repository root and **Framework Preset** = *Other*. Do **not** override Install/Build/Output — they come from `vercel.json`. No environment variables are required.
-4. Deploy. Every push to `main` redeploys.
-5. Verify: open the URL (log out of Vercel or use a private window — if you get a Vercel login page, turn off *Settings → Deployment Protection → Vercel Authentication* for the project). Then `curl https://<your-url>/api/health` should return JSON with `"ok":true`, and analysing `https://example.com` from the Analyze page should finish with a report.
+- **Root Directory = `apps/web`** (the current project): settings come from `apps/web/vercel.json`.
+- **Root Directory = repository root**: settings come from `vercel.json`.
 
-> Not yet verified on Vercel itself: this session's Vercel connector belongs to a different team and was refused (HTTP 403), so the production deploy could not be done or smoke-tested from here. The same build runs locally and under Playwright.
+Framework preset *Other*; no environment variables are required. Check a deploy with `curl https://omniforge-re.vercel.app/api/health` (JSON with `"ok":true`). If you see a Vercel login page instead of the app, turn off *Settings → Deployment Protection → Vercel Authentication*.
 
 ## Install the macOS app
 
-Builds come from **Actions → Desktop (macOS)** (artifacts `omniforge-re-apple-silicon` and `omniforge-re-intel`; tagged releases `vX.Y.Z` attach the DMGs). The app is **unsigned** unless the repository has the Apple secrets below, so macOS will warn on first launch:
+Download the DMG for your Mac from the links at the top (or **[Releases](https://github.com/CartyChris/omniforge-re/releases)**, which also lists SHA-256 checksums). Every release is built and verified on real macOS runners before it is published: architecture of the app and its engine, bundled resources, DMG contents, and a launch smoke test. Bumping the desktop version on `main` publishes a new release.
+
+The app is **unsigned** unless the repository has the Apple secrets below, so macOS will warn on first launch:
 
 - Drag *OmniForge RE* to Applications, then **right-click → Open → Open** (once), or
 - `xattr -dr com.apple.quarantine "/Applications/OmniForge RE.app"`

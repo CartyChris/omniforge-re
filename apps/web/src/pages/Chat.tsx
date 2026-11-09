@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { useAuthorization } from "@/components/domain/Omnibox";
 import { Badge, Button, Card, EmptyState, SectionTitle, Segmented, Textarea } from "@/components/ui/primitives";
 import { Select } from "@/components/ui/overlay";
+import { Markdown } from "@/components/ui/Markdown";
 
 type Mode = "single" | "orchestrator";
 type Step = { kind: "tool" | "subagent"; id: string; label: string; agent?: string; status: "running" | "ok" | "failed"; detail?: string };
@@ -23,12 +24,6 @@ const SUGGEST: Record<Mode, string[]> = {
   orchestrator: ["Analyse https://example.com and list its features with evidence", "Analyse github.com/vercel/next.js-examples… and explain the architecture", "Compare my two latest investigations using subagents", "Rebuild the checkout flow of my latest investigation in Next.js"],
   single: ["Explain how OAuth PKCE works", "Review the attached file for bugs", "Draft a data model for a booking app"],
 };
-
-/** Minimal, safe rendering: fenced code blocks in <pre>, everything else as text (no HTML from the model is ever interpreted). */
-function Rich({ text }: { text: string }) {
-  const parts = text.split(/```[\w-]*\n?/);
-  return <>{parts.map((p, i) => (i % 2 ? <pre key={i} className="my-2 overflow-x-auto rounded-lg border border-line bg-elevated p-3 font-mono text-[12px] leading-relaxed">{p.replace(/\n$/, "")}</pre> : <span key={i} className="whitespace-pre-wrap break-words">{p}</span>))}</>;
-}
 
 function Trace({ steps, open }: { steps: Step[]; open?: boolean }) {
   if (!steps.length) return null;
@@ -144,11 +139,11 @@ export default function ChatPage() {
                 <div className={cn("grid size-7 shrink-0 place-items-center rounded-full", m.role === "user" ? "bg-overlay" : "bg-accent-soft text-accent")}>{m.role === "user" ? <User className="size-4" /> : m.mode === "orchestrator" ? <Network className="size-4" /> : <Bot className="size-4" />}</div>
                 <div className={cn("min-w-0 max-w-[85%] space-y-2 rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed", m.role === "user" ? "bg-accent text-accent-fg" : "border border-line bg-bg")}>
                   {m.trace && <Trace steps={m.trace} />}
-                  <div><Rich text={m.content} /></div>
+                  <div><Markdown text={m.content} /></div>
                   {m.model && <div className="border-t border-line pt-1 text-[11px] text-faint">AI-generated · {m.model}</div>}
                 </div>
               </div>)}
-              {live && <div className="flex gap-3"><div className="grid size-7 shrink-0 place-items-center rounded-full bg-accent-soft text-accent">{mode === "orchestrator" ? <Network className="size-4" /> : <Bot className="size-4" />}</div><div className="min-w-0 max-w-[85%] space-y-2 rounded-2xl border border-line bg-bg px-3.5 py-2.5 text-sm leading-relaxed"><Trace steps={live.steps} open />{live.text ? <Rich text={live.text} /> : <span className="text-faint">{live.steps.length ? "Working…" : "Thinking…"}</span>}</div></div>}
+              {live && <div className="flex gap-3"><div className="grid size-7 shrink-0 place-items-center rounded-full bg-accent-soft text-accent">{mode === "orchestrator" ? <Network className="size-4" /> : <Bot className="size-4" />}</div><div className="min-w-0 max-w-[85%] space-y-2 rounded-2xl border border-line bg-bg px-3.5 py-2.5 text-sm leading-relaxed"><Trace steps={live.steps} open />{live.text ? <Markdown text={live.text} /> : <span className="text-faint">{live.steps.length ? "Working…" : "Thinking…"}</span>}</div></div>}
               <div ref={end} />
             </div>
             {files.length > 0 && <div className="flex flex-wrap gap-1.5 border-t border-line px-3 pt-2" aria-label="Attached files">{files.slice(0, 6).map((f, i) => <Badge key={`${f.path}${i}`}>{f.path}</Badge>)}{files.length > 6 && <Badge>+{files.length - 6} more</Badge>}<Button size="xs" variant="ghost" icon={<X className="size-3" />} onClick={() => setFiles([])}>Remove</Button></div>}
