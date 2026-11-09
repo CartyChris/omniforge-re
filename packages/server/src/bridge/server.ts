@@ -186,7 +186,7 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
       ui(); const b = await readJson(req, 2000); const a = ADAPTERS.find((x) => x.id === b.id); if (!a?.login) return err("This CLI has no sign-in command (it uses API keys).", 400);
       const info = await probeCli(a); if (!info.path) return err(`${a.name} is not installed. ${a.install}`, 400);
       const command = [info.path, ...a.login.slice(1)].map((x) => (/^[\w./@:-]+$/.test(x) ? x : `'${x.replace(/'/g, "'\\''")}'`)).join(" ");
-      if (process.platform === "darwin" && !o.openUrl) { execFile("osascript", ["-e", 'tell application "Terminal" to activate', "-e", `tell application "Terminal" to do script ${JSON.stringify(command)}`], () => {}); return json({ opened: true, command }); }
+      if (process.platform === "darwin" && !o.openUrl) { const opened = await new Promise<boolean>((resolve) => execFile("osascript", ["-e", 'tell application "Terminal" to activate', "-e", `tell application "Terminal" to do script ${JSON.stringify(command)}`], { timeout: 15_000 }, (error) => resolve(!error))); return json({ opened, command }); }
       return json({ opened: false, command });
     }
 
@@ -200,6 +200,8 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
       if (info.status === "unsupported-invocation") return err(`This version of ${a.name} does not expose the non-interactive mode this app needs.`, 400);
       const rt = root(b.root); const prompt = buildAgentPrompt(String(b.prompt ?? ""), typeof b.brief === "string" ? b.brief : undefined);
       const budget = Math.min(20, Math.max(0.1, Number(b.maxBudgetUsd) || 2));
+      if (b.zai !== undefined && (cliId !== "claude-code" || typeof b.zai?.key !== "string" || !/^[\x21-\x7e]{1,400}$/.test(b.zai.key) || typeof b.model !== "string" || !/^glm-[\w.-]{1,110}$/.test(b.model))) return err("Z.AI Coding Plan requires Claude Code, a valid API key and a GLM model ID.", 400);
+      const zaiEnv = b.zai ? { ANTHROPIC_BASE_URL: "https://api.z.ai/api/anthropic", ANTHROPIC_AUTH_TOKEN: b.zai.key, ANTHROPIC_API_KEY: "", CLAUDE_CODE_OAUTH_TOKEN: "", ANTHROPIC_DEFAULT_OPUS_MODEL: b.model, ANTHROPIC_DEFAULT_SONNET_MODEL: b.model, ANTHROPIC_DEFAULT_HAIKU_MODEL: b.model } : undefined;
       // Only well-formed server entries are forwarded (names, commands and addresses are re-validated by core before anything runs).
       const mcpServers = Array.isArray(b.mcpServers) ? b.mcpServers.slice(0, 9).map((m: any) => ("url" in (m ?? {}) ? { name: String(m.name), url: String(m.url) } : { name: String(m?.name), command: String(m?.command), args: Array.isArray(m?.args) ? m.args.map(String) : [] })) : [];
       if (mcpServers.length && !caps.mcp) return err(`${caps.label} does not support MCP servers.`, 400);
@@ -218,7 +220,7 @@ export async function startBridge(o: BridgeOptions = {}): Promise<Bridge> {
         send("start", { runId: shadow.id, copied: shadow.copied, bytes: shadow.bytes, skipped: shadow.skipped.slice(0, 100), cli: info.version, cliName: a.name });
         let result: AgentEvent | undefined;
         const events = cliId === "claude-code"
-          ? runClaudeAgent(shadow, { cliPath: info.path!, prompt, model, allowedCommands, mcpServers, maxBudgetUsd: budget, signal })
+          ? runClaudeAgent(shadow, { cliPath: info.path!, prompt, model, allowedCommands, mcpServers, maxBudgetUsd: budget, signal, env: zaiEnv })
           : runAgentCli(shadow, { cli: cliId as Exclude<AgentCliId, "claude-code">, cliPath: info.path!, prompt, model, allowedCommands, mcpServers, aider, signal });
         for await (const e of events) { send("event", e); if (e.type === "result") result = e; }
         send("done", { runId: shadow.id, ok: result?.type === "result" && result.ok, result, changes: await listChanges(shadow) });

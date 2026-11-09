@@ -16,6 +16,13 @@ async function until(fn: () => boolean, ms = 8000) { const t = Date.now(); while
 beforeAll(() => { tmp = fs.mkdtempSync(path.join(os.tmpdir(), "omni-proc-")); });
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
+describe("subscription sign-in", () => {
+  it("uses the vendors' native login commands rather than collecting OAuth tokens", () => {
+    expect(ADAPTERS.find((a) => a.id === "claude-code")?.login).toEqual(["claude", "auth", "login"]);
+    expect(ADAPTERS.find((a) => a.id === "codex")?.login).toEqual(["codex", "login"]);
+  });
+});
+
 describe("JobManager", () => {
   const mk = () => new JobManager({ dir: fs.mkdtempSync(path.join(tmp, "jobs-")) });
   it("runs a command, streams lines, records exit state, and persists a log", async () => {

@@ -19,6 +19,7 @@ export interface CliAdapter { id: string; name: string; bins: string[]; versionA
 export const ADAPTERS: CliAdapter[] = [
   {
     id: "claude-code", name: "Claude Code", bins: ["claude"], versionArgs: ["--version"], vendor: "Anthropic", agentic: true, install: "npm install -g @anthropic-ai/claude-code",
+    login: ["claude", "auth", "login"],
     authCheck: { args: ["auth", "status"], ok: (r) => r.code === 0 && !/not logged in|no.*auth/i.test(r.out) },
     methods: [
       { id: "print-stream-json", probe: { args: ["--help"], needs: ["--print", "--output-format", "--verbose"] }, stdin: true, parse: "claude-stream-json", build: ({ model, permissionMode }) => ["-p", "--output-format", "stream-json", "--verbose", "--no-session-persistence", "--permission-mode", permissionMode ?? "default", ...(model ? ["--model", model] : [])] },

@@ -37,6 +37,9 @@ export function CliAgentPanel() {
   type CliRow = { id: string; name: string; status: string; version?: string; canLogin?: boolean };
   const agentClis = ((bridgeInfo?.clis ?? []) as CliRow[]).filter((c) => AGENT_CLIS.some((a) => a.id === c.id) && c.status !== "not-installed");
   const [cliId, setCliId] = useState<AgentCliId>("claude-code");
+  const [zaiPlan, setZaiPlan] = useState(false);
+  const [zaiKey, setZaiKey] = useState("");
+  const [zaiModel, setZaiModel] = useState("glm-5.3");
   const cli = agentClis.find((c) => c.id === cliId) ?? agentClis[0]; const caps = AGENT_CLIS.find((a) => a.id === (cli?.id ?? cliId))!;
   const { providers, models } = useApp(); const [aiderModel, setAiderModel] = useState("");
   const aiderChoices = models.filter((m) => { const pv = providers.find((p) => p.id === m.provider); return !!pv && !!AIDER_PROVIDERS[pv.preset ?? ""]; }).map((m) => ({ value: `${m.provider}::${m.id}`, label: m.id, hint: providers.find((p) => p.id === m.provider)?.label }));
@@ -82,6 +85,8 @@ export function CliAgentPanel() {
   };
   const run = async () => {
     if (!rootInfo || !prompt.trim()) return;
+    const codingPlan = caps.id === "claude-code" && zaiPlan;
+    if (codingPlan && (!zaiKey.trim() || !/^[\w.-]{1,120}$/.test(zaiModel))) return void toast.error("Enter a Z.AI key and a valid model ID.");
     let aider: { model: string; keyEnv?: string; key?: string; apiBase?: string } | undefined;
     if (caps.id === "aider") {
       const [pid, mid] = aiderModel.split("::"); const pv = providers.find((p) => p.id === pid); const map = pv ? AIDER_PROVIDERS[pv.preset ?? ""] : undefined;
@@ -94,13 +99,13 @@ export function CliAgentPanel() {
       : planAgentRun(caps.id as Exclude<AgentCliId, "claude-code">, { prompt: "<your instruction>", allowedCommands: cmds, mcpServers: mcpChosen, aider: aider && { ...aider, key: aider.key ? "<your key>" : undefined }, work: "<private copy>", runDir: "<private run folder>" }).args;
     const bin = { "claude-code": "claude", codex: "codex", gemini: "gemini", opencode: "opencode", aider: "aider" }[caps.id];
     const cmdNote = cmds.length ? (caps.commands === "sandbox" ? ` Codex may run shell commands inside its own sandbox (writes only inside the copy, no network) — it cannot be limited to exact commands.` : ` It may also run these commands inside the copy: ${cmds.join(", ")}.`) : " It cannot run shell commands.";
-    const ok = await requestApproval({ kind: "command", title: `Run ${caps.label} on a copy of “${rootInfo.label}”?`, detail: `${caps.label} ${cli.version ?? ""} will read and edit a private copy of this folder (without credential files, dependencies or any project agent configuration such as .claude, .codex, .gemini, .opencode, AGENTS.md or .aider files). Your folder is not touched until you review and apply the changes. ${caps.id === "aider" ? `It uses ${aider!.model} with your OmniForge key for that provider.` : `It uses your own ${caps.label} sign-in and may use your plan's quota.`}${caps.id === "claude-code" ? " Capped at $2 for this run." : ""}${cmdNote}${mcpChosen.length ? ` It may use these MCP servers, which are programs or services outside this app that act with your permissions and are not sandboxed: ${mcpChosen.map(describeMcpServer).join(" · ")}.` : ""}`, command: `${bin} ${shownArgs.join(" ")}${caps.id === "claude-code" && mcpChosen.length ? `\n# MCP config: ${JSON.stringify(Object.fromEntries(mcpChosen.map((m) => [m.name, "url" in m ? { type: "http", url: m.url } : { command: m.command, args: m.args }])))}` : ""}`, danger: cmds.length > 0 || mcpChosen.length > 0 });
+    const ok = await requestApproval({ kind: "command", title: `Run ${caps.label} on a copy of “${rootInfo.label}”?`, detail: `${caps.label} ${cli.version ?? ""} will read and edit a private copy of this folder (without credential files, dependencies or any project agent configuration such as .claude, .codex, .gemini, .opencode, AGENTS.md or .aider files). Your folder is not touched until you review and apply the changes. ${codingPlan ? "It sends code to Z.AI through Claude Code and uses your Coding Plan quota, not your Claude subscription." : caps.id === "aider" ? `It uses ${aider!.model} with your OmniForge key for that provider.` : `It uses your own ${caps.label} sign-in and may use your plan's quota.`}${caps.id === "claude-code" ? " Capped at $2 for this run." : ""}${cmdNote}${mcpChosen.length ? ` It may use these MCP servers, which are programs or services outside this app that act with your permissions and are not sandboxed: ${mcpChosen.map(describeMcpServer).join(" · ")}.` : ""}`, command: `${bin} ${shownArgs.join(" ")}${caps.id === "claude-code" && mcpChosen.length ? `\n# MCP config: ${JSON.stringify(Object.fromEntries(mcpChosen.map((m) => [m.name, "url" in m ? { type: "http", url: m.url } : { command: m.command, args: m.args }])))}` : ""}`, danger: cmds.length > 0 || mcpChosen.length > 0 });
     if (!ok) return;
     const brief = inv !== "none" ? siteBrief(invs.find((i) => i.id === inv)!) : undefined;
     setBusy(true); setEvents([]); setStart(null); setDone(null); setError(null); setApplied(null); setPicked(new Set()); setView(null); const ctrl = new AbortController(); abort.current = ctrl;
     void audit("agent run started", `${caps.label} on ${rootInfo.label}${cmds.length ? ` with commands: ${cmds.join(", ")}` : ""}${mcpChosen.length ? ` with MCP servers: ${mcpChosen.map((m) => m.name).join(", ")}` : ""}`);
     try {
-      const res = await bridge.raw("POST", "/bridge/agent/run", { cli: caps.id, root, prompt: prompt.trim(), brief, allowedCommands: caps.commands === "none" ? [] : cmds, mcpServers: caps.mcp ? mcpChosen : [], maxBudgetUsd: 2, aider }, ctrl.signal);
+      const res = await bridge.raw("POST", "/bridge/agent/run", { cli: caps.id, root, prompt: prompt.trim(), brief, allowedCommands: caps.commands === "none" ? [] : cmds, mcpServers: caps.mcp ? mcpChosen : [], maxBudgetUsd: 2, aider, ...(codingPlan ? { zai: { key: zaiKey.trim() }, model: zaiModel } : {}) }, ctrl.signal);
       await readSSE(res, (ev, d) => {
         if (ev === "start") setStart(d); else if (ev === "event") setEvents((e) => [...e, d]);
         else if (ev === "done") { setDone(d); setPicked(new Set((d.changes as Change[]).filter((c) => !c.refused && c.status !== "deleted").map((c) => c.path))); setView((d.changes as Change[])[0]?.path ?? null); }
@@ -125,7 +130,15 @@ export function CliAgentPanel() {
           <p className="text-[13px] text-muted">Your installed coding CLI edits a copy of the folder, so you see exactly what it changed before anything reaches your project. {settings.localOnly && <span className="text-warn">Local-only mode is on — these CLIs send your code to their vendor, so agent runs are disabled.</span>}</p>
           <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Coding CLI">{agentClis.map((c) => <button key={c.id} role="radio" aria-checked={cli.id === c.id} onClick={() => setCliId(c.id as AgentCliId)} className={cn("rounded-lg border px-2.5 py-1.5 text-[13px]", cli.id === c.id ? "border-accent bg-accent-soft" : "border-line hover:border-line-strong")}>{AGENT_CLIS.find((a) => a.id === c.id)?.label ?? c.name}{c.status === "installed-unauthenticated" && <span className="ml-1 text-[11px] text-warn">· sign in</span>}</button>)}</div>
           {cli.status === "installed-unauthenticated" && <div className="flex flex-wrap items-center gap-2 rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-[13px]"><span className="min-w-0 flex-1">{caps.signIn}</span>{cli.canLogin && <Button size="xs" variant="primary" onClick={() => void login()}>Sign in</Button>}</div>}
-          {caps.needsKey && <Field label="Model for Aider (uses your OmniForge key for that provider)" group><Select label="Aider model" value={aiderModel} onValueChange={setAiderModel} options={aiderChoices} placeholder={aiderChoices.length ? "Choose a model" : "Connect OpenRouter, OpenAI, Anthropic… in Providers first"} /></Field>}
+          {caps.id === "claude-code" && <div className="space-y-3 rounded-lg border border-line p-3">
+          <label className="flex min-h-11 items-center gap-3 text-sm"><input type="checkbox" checked={zaiPlan} onChange={(e) => setZaiPlan(e.target.checked)} />Use Z.AI Coding Plan instead of Claude billing</label>
+          {zaiPlan && <>
+            <p className="text-sm text-muted">Runs the supported Claude Code CLI against https://api.z.ai/api/anthropic. Uses your plan quota; no automatic pay-as-you-go fallback. The key is kept only for this open form, not saved or exported.</p>
+            <Field label="Z.AI Coding Plan API key"><Input type="password" autoComplete="off" className="text-base" value={zaiKey} onChange={(e) => setZaiKey(e.target.value)} /></Field>
+            <Field label="Z.AI model"><Input className="text-base" value={zaiModel} onChange={(e) => setZaiModel(e.target.value)} /></Field>
+          </>}
+        </div>}
+        {caps.needsKey && <Field label="Model for Aider (uses your OmniForge key for that provider)" group><Select label="Aider model" value={aiderModel} onValueChange={setAiderModel} options={aiderChoices} placeholder={aiderChoices.length ? "Choose a model" : "Connect OpenRouter, OpenAI, Anthropic… in Providers first"} /></Field>}
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Project folder (approved)" group><Select label="Project folder" value={root} onValueChange={setRoot} options={roots.map((r) => ({ value: r.id, label: r.label, hint: r.writable ? "writable" : "read-only" }))} placeholder="Approve a folder in Analyze first" /></Field>
             <Field label="Use an analysis as background (optional)" group><Select label="Background analysis" value={inv} onValueChange={setInv} options={[{ value: "none", label: "None" }, ...invs.map((i) => ({ value: i.id, label: i.name }))]} /></Field>
