@@ -87,7 +87,7 @@ describe("pairing → approval → scoped access", () => {
       expect((await call(m, p, { token, origin: WEB, body: b })).status, p).toBe(403);
     expect((await call("GET", "/bridge/info", { token, origin: "https://evil.example" })).status).toBe(403); // stolen token, wrong site
     expect((await call("POST", "/bridge/roots", { token, origin: WEB, body: { path: proj } })).status).toBe(403); // cannot approve its own folder
-  });
+  }, 30_000); // the first /bridge/info probes every installed tool; under a parallel suite that can exceed vitest's 5 s default
   it("the user approves a folder and a scope; only then can the session read — and .env values stay hidden", async () => {
     const add = await ui("POST", "/bridge/roots", { path: proj, writable: false });
     expect(add.status).toBe(200); rootId = add.json.id;
