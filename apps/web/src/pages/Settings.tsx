@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
-import { Download, Eye, FileClock, History, KeyRound, Lock, LockOpen, Moon, RotateCcw, ShieldCheck, Sun, Trash2, Upload } from "lucide-react";
+import { Download, Eye, FileClock, History, KeyRound, Lock, LockOpen, RotateCcw, ShieldCheck, Trash2, Upload } from "lucide-react";
 import { exportProject, importProject, type Project } from "@omniforge/core";
 import { strToU8, unzipSync, zipSync } from "fflate";
 import { DEFAULT_SETTINGS, useApp, type Settings as S } from "@/lib/store";
+import { ThemePicker } from "@/components/settings/ThemePicker";
 import { db, ls } from "@/lib/storage";
 import { vault } from "@/lib/vault";
 import { appLog } from "@/lib/log";
@@ -39,7 +40,7 @@ function General() {
   return (
     <div className="space-y-5">
       <Card><CardHeader><CardTitle>Appearance</CardTitle></CardHeader><CardBody className="divide-y divide-line">
-        <div className="flex items-center justify-between gap-4 pb-3"><div><p className="text-sm font-medium">Theme</p><p className="text-xs text-muted">Dark is the default. Applies instantly.</p></div><Segmented value={settings.theme} onChange={(theme) => patchSettings({ theme })} options={[{ value: "dark", label: <span className="flex items-center gap-1.5"><Moon className="size-3.5" />Dark</span> }, { value: "light", label: <span className="flex items-center gap-1.5"><Sun className="size-3.5" />Light</span> }]} /></div>
+        <div className="pb-4"><ThemePicker /></div>
         <ToggleRow title="Expanded sidebar" desc="Show section names next to the icons (desktop)." checked={settings.sidebarExpanded} onChange={(v) => patchSettings({ sidebarExpanded: v })} />
         <ToggleRow title="Open results automatically" desc="Jump to the investigation when an analysis finishes." checked={settings.autoOpenResults} onChange={(v) => patchSettings({ autoOpenResults: v })} />
       </CardBody></Card>

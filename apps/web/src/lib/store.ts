@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { toast } from "sonner";
 import { createProject, exportProject as coreExport, importProject as coreImport, projectStats, upsertInvestigation, type CrawlConfig, type Investigation, type LogEntry, type ModelInfo, type Project, type ProviderConfig, type TaskKind, DEFAULT_CRAWL } from "@omniforge/core";
 import { db, ls } from "./storage";
+import { applyTheme, resolveTheme } from "./themes";
 import { Bridge, desktopLog, isTauri, probe, tauriBridge, type BridgeConn } from "./bridge";
 import { debounce } from "./utils";
 import { appLog } from "./log";
@@ -14,7 +15,9 @@ export interface LiveJob {
   progress: number; counts: { pages: number; assets: number; evidence: number }; log: LogEntry[]; pages: LivePage[]; startedAt: number; endedAt?: number; error?: string; investigationId?: string; abort?: AbortController; stage?: string;
 }
 export interface Settings {
-  theme: "dark" | "light"; localOnly: boolean; optimise: "quality" | "cost" | "latency"; assignments: Partial<Record<TaskKind, string>>;
+  /** dark/light mode (derived from themeId; the editor, previews and graph follow it) */
+  theme: "dark" | "light"; /** palette id from lib/themes (or "system") */ themeId?: string; /** accent id from lib/themes; null = the theme's own */ accent?: string | null;
+  localOnly: boolean; optimise: "quality" | "cost" | "latency"; assignments: Partial<Record<TaskKind, string>>;
   defaultStack: string; crawl: Partial<CrawlConfig>; onboarded: boolean; bridgeUrl: string; preferBridge: boolean; autoOpenResults: boolean; sidebarExpanded: boolean;
   github: { login?: string }; vercel: { teamId?: string }; maxCostUsd?: number;
 }
@@ -74,7 +77,10 @@ export const useApp = create<State>((set, get) => ({
   async init() {
     if (get().ready) return;
     const settings = { ...DEFAULT_SETTINGS, ...ls.get<Partial<Settings>>("omniforge.settings", {}) };
-    document.documentElement.setAttribute("data-theme", settings.theme);
+    settings.themeId ??= settings.theme;
+    settings.theme = applyTheme(settings.themeId, settings.accent);
+    // "system" follows the OS live
+    if (typeof matchMedia === "function") matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => { const st = get().settings; if (st.themeId === "system") set({ settings: { ...st, theme: applyTheme("system", st.accent) } }); });
     const providers = ls.get<ProviderConfig[]>("omniforge.providers", []);
     let projects = (await db.get<ProjectIndexItem[]>("projects:index")) ?? [];
     let project: Project | null = null;
@@ -106,11 +112,14 @@ export const useApp = create<State>((set, get) => ({
   patchSettings(p) {
     const prev = get().settings;
     const settings = { ...prev, ...p };
+    // choosing a palette sets the mode; the quick dark/light toggle picks that mode's default palette
+    if (p.themeId !== undefined) settings.theme = resolveTheme(p.themeId).mode;
+    else if (p.theme && p.theme !== prev.theme) settings.themeId = p.theme;
     if (p.localOnly !== undefined && p.localOnly !== prev.localOnly) void audit(p.localOnly ? "local-only mode enabled" : "local-only mode disabled");
     // keep the last few configurations so "Restore previous settings" can undo a change (settings never contain secrets)
     if (JSON.stringify(prev) !== JSON.stringify(settings)) ls.set("omniforge.settings.history", [prev, ...ls.get<Settings[]>("omniforge.settings.history", [])].slice(0, 8));
     ls.set("omniforge.settings", settings);
-    if (p.theme) { document.documentElement.setAttribute("data-theme", p.theme); ls.setRaw("omniforge.theme", p.theme); }
+    if (p.theme !== undefined || p.themeId !== undefined || p.accent !== undefined) settings.theme = applyTheme(settings.themeId, settings.accent);
     set({ settings });
   },
 

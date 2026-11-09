@@ -12,7 +12,7 @@ for (const r of ROUTES) {
     await page.waitForLoadState("networkidle");
     await expect(page.locator("main")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), "horizontal overflow").toBe(true);
-    const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).disableRules(["color-contrast"]).analyze(); // contrast is audited manually per theme
+    const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze(); // includes color-contrast (every theme is also checked in themes.spec)
     const bad = axe.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
     expect(bad.map((v) => `${v.id}: ${v.nodes.slice(0, 2).map((n) => n.target.join(" ")).join(" | ")}`), "a11y").toEqual([]);
     noErrors(errors);
