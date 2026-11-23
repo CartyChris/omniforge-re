@@ -4,6 +4,7 @@ import { Command } from "cmdk";
 import { toast } from "sonner";
 import { Activity, Check, ChevronDown, Cpu, FolderPlus, Loader2, MoreHorizontal, Moon, PanelLeft, Plug, Plus, Search, ShieldCheck, Sun, X, Zap } from "lucide-react";
 import { NAV } from "@/nav";
+import { CHUNK_TAB, searchInvestigations, type Investigation } from "@omniforge/core";
 import { cn, ago } from "@/lib/utils";
 import { useApp } from "@/lib/store";
 import { useApprovals } from "@/lib/approvals";
@@ -101,6 +102,7 @@ export function CommandPalette({ open, setOpen }: { open: boolean; setOpen: (v: 
   const go = (to: string) => { setOpen(false); setQ(""); nav(to); };
   useEffect(() => { if (!open) setQ(""); }, [open]);
   const invs = (project?.investigations ?? []) as any[];
+  const hits = useMemo(() => (q.trim().length >= 3 ? searchInvestigations(invs as Investigation[], q, 12) : []), [q, invs]);
   return (
     <Command.Dialog open={open} onOpenChange={setOpen} label="Command palette" className="fixed inset-0 z-[80] flex items-start justify-center bg-black/60 p-4 pt-[12vh] backdrop-blur-[2px]" shouldFilter>
       <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-line-strong bg-elevated shadow-[var(--shadow-pop)]" onClick={(e) => e.stopPropagation()}>
@@ -123,14 +125,15 @@ export function CommandPalette({ open, setOpen }: { open: boolean; setOpen: (v: 
             <Item value="new project" onSelect={async () => { const name = window.prompt("Project name", "New project"); if (name) { await useApp.getState().newProject(name); setOpen(false); } }} icon={<Plus className="size-4 text-muted" />}>New project…</Item>
           </Command.Group>
           {invs.length > 0 && <Command.Group heading="Investigations" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-faint">{invs.slice(0, 8).map((i) => <Item key={i.id} value={`investigation ${i.name} ${i.targets?.[0]?.value}`} onSelect={() => go(`/investigations/${i.id}`)} icon={<Search className="size-4 text-muted" />} hint={<span className="text-xs text-faint">{ago(i.startedAt)}</span>}>{i.name}</Item>)}</Command.Group>}
+          {hits.length > 0 && <Command.Group forceMount heading="Search results" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-faint">{hits.map((h) => <Item key={`${h.investigationId} ${h.chunkId}`} forceMount value={`hit ${h.investigationId} ${h.chunkId}`} onSelect={() => go(`/investigations/${h.investigationId}?tab=${CHUNK_TAB[h.kind]}`)} icon={<Search className="size-4 text-muted" />} hint={<span className="shrink-0 rounded bg-overlay px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-faint">{h.kind}</span>}><span className="block truncate">{h.label}<span className="ml-2 text-xs text-faint">{h.investigationName}</span></span><span className="block truncate text-xs text-muted">{h.snippet}</span></Item>)}</Command.Group>}
           {projects.length > 1 && <Command.Group heading="Switch project" className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-faint">{projects.map((p) => <Item key={p.id} value={`project ${p.name}`} onSelect={() => { openProject(p.id); setOpen(false); }} icon={<FolderPlus className="size-4 text-muted" />}>{p.name}</Item>)}</Command.Group>}
         </Command.List>
       </div>
     </Command.Dialog>
   );
 }
-function Item({ children, icon, hint, onSelect, value, keywords }: { children: React.ReactNode; icon?: React.ReactNode; hint?: React.ReactNode; onSelect: () => void; value: string; keywords?: string[] }) {
-  return <Command.Item value={value} keywords={keywords} onSelect={onSelect} className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm outline-none data-[selected=true]:bg-overlay">{icon}<span className="min-w-0 flex-1 truncate">{children}</span>{hint}</Command.Item>;
+function Item({ children, icon, hint, onSelect, value, keywords, forceMount }: { children: React.ReactNode; icon?: React.ReactNode; hint?: React.ReactNode; onSelect: () => void; value: string; keywords?: string[]; forceMount?: boolean }) {
+  return <Command.Item value={value} keywords={keywords} forceMount={forceMount} onSelect={onSelect} className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm outline-none data-[selected=true]:bg-overlay">{icon}<span className="min-w-0 flex-1 truncate">{children}</span>{hint}</Command.Item>;
 }
 
 /* ----------------------------- approvals ----------------------------- */
