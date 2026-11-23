@@ -35,11 +35,16 @@ export default defineConfig({
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
       output: {
-        manualChunks: {
-          react: ["react", "react-dom", "react-router"],
-          flow: ["@xyflow/react", "@dagrejs/dagre"],
-          monaco: ["monaco-editor", "@monaco-editor/react"],
-          sandpack: ["@codesandbox/sandpack-react"],
+        // Function form on purpose: the object form also pulls each listed package's shared deps (react/jsx-runtime,
+        // Vite's preload helper) into that chunk, so the entry statically imported monaco + flow and index.html
+        // modulepreloaded ~3.9 MB of editor/graph code before the Dashboard could render.
+        manualChunks(id) {
+          if (id.includes("vite/preload-helper") || id.includes("commonjsHelpers")) return "react"; // tiny, needed at startup
+          if (!id.includes("node_modules")) return;
+          if (/node_modules\/(react|react-dom|react-router|scheduler)\//.test(id)) return "react";
+          if (/node_modules\/(@xyflow|@dagrejs)\//.test(id)) return "flow";
+          if (/node_modules\/(monaco-editor|@monaco-editor)\//.test(id)) return "monaco";
+          if (/node_modules\/@codesandbox\/sandpack-react\//.test(id)) return "sandpack";
         },
       },
     },
