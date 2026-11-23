@@ -67,3 +67,28 @@ test("AI Chat single model: attached text is sent fenced as untrusted, without t
   await expect(page.getByLabel("Attached files")).toHaveCount(0); // cleared after sending
   noErrors(errors);
 });
+
+test("AI Chat single model: attached screenshot shows a thumbnail and is sent as an image_url part to a vision model", async ({ page }) => {
+  const errors = await prepare(page, mockModelSettings);
+  const providers = [{ ...mockProvider[0], manualModels: [{ id: "mock-vision", name: "Mock Vision", capabilities: ["chat", "tools", "vision"] }] }];
+  await page.addInitScript((p) => { try { localStorage.setItem("omniforge.providers", JSON.stringify(p)); } catch { /* sandboxed frame */ } }, providers);
+  let body: { model: string; messages: { role: string; content: unknown }[] } | undefined;
+  await page.route("http://127.0.0.1:4599/v1/chat/completions", async (route) => { body = JSON.parse(route.request().postData() ?? "{}"); return say(route, "A login form."); });
+  await page.goto("/#/chat");
+  await page.getByRole("radio", { name: "Single model" }).click();
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+  await page.locator('input[type="file"][aria-label="Attach files"]').setInputFiles({ name: "shot.png", mimeType: "image/png", buffer: png });
+  await expect(page.getByTestId("chat-image-thumb")).toHaveCount(1);
+  await page.getByRole("combobox", { name: "Model" }).click(); await page.getByRole("option", { name: /mock-scripted-coder/ }).click();
+  await expect(page.getByTestId("chat-vision-notice")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Send" })).toBeDisabled();
+  await page.getByRole("combobox", { name: "Model" }).click(); await page.getByRole("option", { name: /Mock Vision/ }).click();
+  await expect(page.getByTestId("chat-vision-notice")).toHaveCount(0);
+  await page.getByLabel("Message").fill("What is on screen?"); await page.getByLabel("Message").press("Enter");
+  await expect(page.getByText("A login form.")).toBeVisible({ timeout: 30_000 });
+  const content = body!.messages.at(-1)!.content as { type: string; text?: string; image_url?: { url: string } }[];
+  expect(Array.isArray(content)).toBe(true);
+  expect(content[0]).toMatchObject({ type: "text", text: "What is on screen?" });
+  expect(content.find((p) => p.type === "image_url")?.image_url?.url).toBe(`data:image/png;base64,${png.toString("base64")}`);
+  noErrors(errors);
+});
