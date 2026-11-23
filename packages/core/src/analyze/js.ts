@@ -3,7 +3,8 @@
  * Large or unparsable bundles fall back to lexical scanning, and the result
  * says which method produced it.
  */
-import { parse, type Node } from "acorn";
+import type { Node } from "acorn";
+import { parseProgram } from "./parse-program.js";
 import { simple as walkSimple } from "acorn-walk";
 import { envVarNames } from "../util/redact.js";
 
@@ -93,7 +94,7 @@ export function analyzeJs(code: string, opts: { maxAstBytes?: number } = {}): Js
     let ast: Node | null = null;
     for (const sourceType of ["module", "script"] as const) {
       try {
-        ast = parse(code, { ecmaVersion: "latest", sourceType, allowHashBang: true, allowAwaitOutsideFunction: true, allowReturnOutsideFunction: true, allowImportExportEverywhere: true });
+        ast = parseProgram(code, { sourceType }).ast;
         break;
       } catch (e) {
         res.parseError = (e as Error).message;
