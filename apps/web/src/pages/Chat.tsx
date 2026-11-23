@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { Bot, CheckCircle2, CircleAlert, Loader2, MessageSquarePlus, Network, Paperclip, Send, StopCircle, Trash2, User, Workflow, X } from "lucide-react";
-import { modelKey, runOrchestrator, singleChatRequest, uid, type ChatMessage, type Conversation, type ModelInfo, type OrchestratorEvent } from "@omniforge/core";
+import { modelKey, runOrchestrator, singleChatRequest, uid, type ChatMessage, type ImageAttachment, type Conversation, type ModelInfo, type OrchestratorEvent } from "@omniforge/core";
 import { useApp } from "@/lib/store";
 import { loadProviders } from "@/lib/ai";
 import { collectFiles, type PickedFile } from "@/lib/analyze";
@@ -20,6 +20,12 @@ type Chat = Omit<Conversation, "messages"> & { messages: Msg[]; mode?: Mode };
 
 const PREFIX = "aichat:";
 const TEXT_EXT = /\.(?:[cm]?[jt]sx?|json|md|txt|html?|css|scss|py|go|rs|java|kt|swift|rb|php|cs|c|h|cpp|hpp|sh|ya?ml|toml|xml|sql|graphql|gql|proto|env\.example|ini|cfg|csv|vue|svelte|astro)$/i;
+const IMAGE_EXT = /\.(?:png|jpe?g|webp|gif)$/i;
+const IMAGE_MIME = /^image\/(?:png|jpeg|webp|gif)$/;
+const MAX_IMAGE = 5 * 1024 * 1024;
+const isImage = (f: PickedFile) => IMAGE_MIME.test(f.file.type) || IMAGE_EXT.test(f.path);
+const imageType = (f: PickedFile) => (IMAGE_MIME.test(f.file.type) ? f.file.type : ({ png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif" } as Record<string, string>)[f.path.split(".").pop()!.toLowerCase()] ?? "image/png");
+const readImage = (f: PickedFile) => new Promise<ImageAttachment>((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve({ name: f.path, mediaType: imageType(f), data: String(r.result) }); r.onerror = () => reject(r.error ?? new Error(`Couldn't read ${f.path}`)); r.readAsDataURL(f.file); });
 const SUGGEST: Record<Mode, string[]> = {
   orchestrator: ["Analyse https://example.com and list its features with evidence", "Analyse github.com/vercel/next.js-examples… and explain the architecture", "Compare my two latest investigations using subagents", "Rebuild the checkout flow of my latest investigation in Next.js"],
   single: ["Explain how OAuth PKCE works", "Review the attached file for bugs", "Draft a data model for a booking app"],
@@ -69,11 +75,23 @@ export default function ChatPage() {
   });
   const newChat = () => { setActiveId(`${PREFIX}${uid("c")}`); setFiles([]); setLive(null); };
   const del = (id: string) => { mutate((p) => ({ ...p, conversations: p.conversations.filter((c) => c.id !== id) })); if (active?.id === id) setActiveId(null); };
-  const attach = (picked: PickedFile[]) => setFiles((f) => [...f, ...picked].slice(0, 2_000));
+  const attach = (picked: PickedFile[]) => {
+    const big = picked.filter((f) => isImage(f) && f.file.size > MAX_IMAGE);
+    if (big.length) toast.error(`${big.length === 1 ? `${big[0]!.path} is` : `${big.length} images are`} over 5 MB and ${big.length === 1 ? "was" : "were"} not attached`);
+    setFiles((f) => [...f, ...picked.filter((x) => !big.includes(x))].slice(0, 2_000));
+  };
+  const images = useMemo(() => files.filter(isImage), [files]);
+  const thumbs = useMemo(() => images.slice(0, 8).map((f) => ({ f, url: URL.createObjectURL(f.file) })), [images]);
+  useEffect(() => () => thumbs.forEach((t) => URL.revokeObjectURL(t.url)), [thumbs]);
+  const others = files.filter((f) => !isImage(f));
+  const selected = usable.find((m) => modelKey(m) === modelId);
+  const vision = !!selected?.capabilities.includes("vision");
+  const blockedImages = images.length > 0 && !vision;
 
   const send = async (raw: string) => {
     const q = raw.trim(); const model = usable.find((m) => modelKey(m) === modelId) as ModelInfo | undefined;
     if (!q || live || !model) return;
+    if (images.length && !model.capabilities.includes("vision")) { toast.error(`${model.name ?? model.id} can't read images. Pick a vision-capable model or remove the images.`); return; }
     const id = isNew ? activeId! : active?.id ?? `${PREFIX}${uid("c")}`; setActiveId(id);
     const history = (chats.find((c) => c.id === id)?.messages ?? []).filter((m) => m.role === "user" || m.role === "assistant").map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
     const attachedNote = files.length ? `\n\n📎 ${files.length === 1 ? files[0]!.path : `${files.length} files`}` : "";
@@ -82,6 +100,7 @@ export default function ChatPage() {
     const ctrl = new AbortController(); abort.current = ctrl; let steps: Step[] = []; let acc = "";
     const upd = (f: (s: Step[]) => Step[]) => { steps = f(steps); setLive({ text: acc, steps }); };
     try {
+      const imgs = await Promise.all(images.map(readImage));
       const { providers } = await loadProviders(); const provider = providers.find((p) => p.id === model.provider);
       if (!provider) throw new Error(`${model.provider} isn't available (is it enabled and unlocked?)`);
       let answer: string;
@@ -92,15 +111,15 @@ export default function ChatPage() {
           else if (e.type === "tool_result") upd((s) => s.map((x) => (x.id === e.id && x.agent === e.agent && x.kind === "tool" ? { ...x, status: e.ok ? "ok" : "failed", detail: e.summary || x.detail } : x)));
           else if (e.type === "subagent") upd((s) => s.some((x) => x.kind === "subagent" && x.id === e.id) ? s.map((x) => (x.kind === "subagent" && x.id === e.id ? { ...x, status: e.status === "running" ? "running" : e.status === "done" ? "ok" : "failed" } : x)) : [...s, { kind: "subagent", id: e.id, label: `${e.id} · ${e.role}`, status: "running", detail: e.objective.slice(0, 140) }]);
         };
-        const r = await runOrchestrator({ provider, model, history, message: q, host: chatHost(files), onEvent, signal: ctrl.signal });
+        const r = await runOrchestrator({ provider, model, history, message: q, images: imgs, host: chatHost(files), onEvent, signal: ctrl.signal });
         answer = r.text;
         if (r.investigations.length) answer += `\n\nInvestigations used: ${r.investigations.join(", ")}`;
       } else {
         const texts: { name: string; text: string }[] = []; let budget = 400_000;
-        for (const f of files) { if (!TEXT_EXT.test(f.path) || f.file.size > 200_000 || f.file.size > budget) continue; texts.push({ name: f.path, text: await f.file.text() }); budget -= f.file.size; }
-        const req = singleChatRequest({ model: model.id, history, message: q, attachments: texts });
+        for (const f of others) { if (!TEXT_EXT.test(f.path) || f.file.size > 200_000 || f.file.size > budget) continue; texts.push({ name: f.path, text: await f.file.text() }); budget -= f.file.size; }
+        const req = singleChatRequest({ model: model.id, history, message: q, attachments: texts, images: imgs });
         for await (const e of provider.chat({ ...req, signal: ctrl.signal, maxTokens: Math.min(model.maxOutput ?? 8192, 16_384) })) if (e.type === "text") { acc += e.text; setLive({ text: acc, steps }); }
-        answer = acc + (files.length > texts.length ? `\n\n_(${files.length - texts.length} attached file(s) were not text or too large to include; switch to Orchestrator to analyse them)_` : "");
+        answer = acc + (others.length > texts.length ? `\n\n_(${others.length - texts.length} attached file(s) were not text or too large to include; switch to Orchestrator to analyse them)_` : "");
       }
       save(id, (c) => ({ ...c, messages: [...c.messages, { id: uid("m"), role: "assistant", content: answer || "(no answer)", model: `${model.provider}/${model.id}`, at: new Date().toISOString(), trace: steps, mode }] }));
       setFiles([]);
@@ -134,7 +153,7 @@ export default function ChatPage() {
             </div>
             {mode === "orchestrator" && !usable.length && <p role="status" className="border-b border-line bg-warn/10 px-3 py-2 text-[13px] text-warn">The orchestrator needs a model that supports tool calling (most current Anthropic, OpenAI, Gemini, OpenRouter and many local models). Use Single model, or connect one in AI Studio.</p>}
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4" aria-live="polite" data-testid="chat-log">
-              {!shown.length && !live && <div className="grid h-full place-items-center text-center"><div className="max-w-md space-y-3">{mode === "orchestrator" ? <Network className="mx-auto size-6 text-accent" /> : <Bot className="mx-auto size-6 text-accent" />}<p className="text-sm text-muted">{mode === "orchestrator" ? "Paste a website or GitHub link, or attach files — the orchestrator analyses them, delegates to subagents and answers from the evidence." : "Chat with any connected model. Attached text files are included as context."}</p><div className="flex flex-col gap-2">{SUGGEST[mode].map((s) => <button key={s} onClick={() => setText(s)} className="rounded-lg border border-line px-3 py-2 text-left text-[13px] text-muted transition hover:border-accent/50 hover:text-fg">{s}</button>)}</div></div></div>}
+              {!shown.length && !live && <div className="grid h-full place-items-center text-center"><div className="max-w-md space-y-3">{mode === "orchestrator" ? <Network className="mx-auto size-6 text-accent" /> : <Bot className="mx-auto size-6 text-accent" />}<p className="text-sm text-muted">{mode === "orchestrator" ? "Paste a website or GitHub link, or attach files — the orchestrator analyses them, delegates to subagents and answers from the evidence." : "Chat with any connected model. Attached text files are included as context; screenshots and images go to vision-capable models."}</p><div className="flex flex-col gap-2">{SUGGEST[mode].map((s) => <button key={s} onClick={() => setText(s)} className="rounded-lg border border-line px-3 py-2 text-left text-[13px] text-muted transition hover:border-accent/50 hover:text-fg">{s}</button>)}</div></div></div>}
               {shown.map((m) => <div key={m.id} className={cn("flex gap-3", m.role === "user" && "flex-row-reverse")}>
                 <div className={cn("grid size-7 shrink-0 place-items-center rounded-full", m.role === "user" ? "bg-overlay" : "bg-accent-soft text-accent")}>{m.role === "user" ? <User className="size-4" /> : m.mode === "orchestrator" ? <Network className="size-4" /> : <Bot className="size-4" />}</div>
                 <div className={cn("min-w-0 max-w-[85%] space-y-2 rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed", m.role === "user" ? "bg-accent text-accent-fg" : "border border-line bg-bg")}>
@@ -146,12 +165,13 @@ export default function ChatPage() {
               {live && <div className="flex gap-3"><div className="grid size-7 shrink-0 place-items-center rounded-full bg-accent-soft text-accent">{mode === "orchestrator" ? <Network className="size-4" /> : <Bot className="size-4" />}</div><div className="min-w-0 max-w-[85%] space-y-2 rounded-2xl border border-line bg-bg px-3.5 py-2.5 text-sm leading-relaxed"><Trace steps={live.steps} open />{live.text ? <Markdown text={live.text} /> : <span className="text-faint">{live.steps.length ? "Working…" : "Thinking…"}</span>}</div></div>}
               <div ref={end} />
             </div>
-            {files.length > 0 && <div className="flex flex-wrap gap-1.5 border-t border-line px-3 pt-2" aria-label="Attached files">{files.slice(0, 6).map((f, i) => <Badge key={`${f.path}${i}`}>{f.path}</Badge>)}{files.length > 6 && <Badge>+{files.length - 6} more</Badge>}<Button size="xs" variant="ghost" icon={<X className="size-3" />} onClick={() => setFiles([])}>Remove</Button></div>}
+            {blockedImages && <p role="status" data-testid="chat-vision-notice" className="border-t border-line bg-warn/10 px-3 py-2 text-[13px] text-warn">{selected ? `${selected.name ?? selected.id} can't read images.` : "No model selected."} Pick a model with vision, or <button type="button" className="underline" onClick={() => setFiles((f) => f.filter((x) => !isImage(x)))}>remove the images</button>.</p>}
+            {files.length > 0 && <div className="flex flex-wrap items-center gap-1.5 border-t border-line px-3 pt-2" aria-label="Attached files">{thumbs.map(({ f, url }, i) => <span key={`${f.path}${i}`} className="relative"><img src={url} alt={f.path} title={f.path} data-testid="chat-image-thumb" className={cn("size-12 rounded-md border border-line object-cover", blockedImages && "opacity-50")} /><button type="button" aria-label={`Remove ${f.path}`} className="absolute -right-1.5 -top-1.5 grid size-4 place-items-center rounded-full bg-overlay text-fg opacity-80 hover:opacity-100" onClick={() => setFiles((all) => all.filter((x) => x !== f))}><X className="size-3" /></button></span>)}{images.length > thumbs.length && <Badge>+{images.length - thumbs.length} images</Badge>}{others.slice(0, 6).map((f, i) => <Badge key={`${f.path}${i}`}>{f.path}</Badge>)}{others.length > 6 && <Badge>+{others.length - 6} more</Badge>}<Button size="xs" variant="ghost" icon={<X className="size-3" />} onClick={() => setFiles([])}>Remove</Button></div>}
             <form className="flex items-end gap-2 border-t border-line p-3" onSubmit={(e) => { e.preventDefault(); submit(text); }}>
               <input ref={fileRef} type="file" multiple hidden aria-label="Attach files" onChange={async (e) => { if (e.target.files) attach(await collectFiles(e.target.files)); e.target.value = ""; }} />
               <Button type="button" size="icon" variant="ghost" aria-label="Attach files" title="Attach files (or drop them here)" onClick={() => fileRef.current?.click()}><Paperclip className="size-4" /></Button>
               <Textarea value={text} onChange={(e) => setText(e.target.value)} rows={1} className="min-h-11 flex-1 resize-none text-base sm:text-sm" placeholder={mode === "orchestrator" ? "Ask, or paste a URL / GitHub repo to analyse…" : "Message…"} aria-label="Message" onKeyDown={(e) => { if (e.nativeEvent.isComposing) return; if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(text); } }} />
-              {live ? <Button type="button" variant="danger" size="icon" aria-label="Stop" onClick={() => abort.current?.abort()}><StopCircle className="size-4" /></Button> : <Button type="submit" variant="primary" size="icon" aria-label="Send" disabled={!text.trim() || !modelId}><Send className="size-4" /></Button>}
+              {live ? <Button type="button" variant="danger" size="icon" aria-label="Stop" onClick={() => abort.current?.abort()}><StopCircle className="size-4" /></Button> : <Button type="submit" variant="primary" size="icon" aria-label="Send" disabled={!text.trim() || !modelId || blockedImages} title={blockedImages ? "The selected model can't read images" : undefined}><Send className="size-4" /></Button>}
             </form>
           </Card>
         </div>

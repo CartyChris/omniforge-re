@@ -6,7 +6,7 @@
  * untrusted, subagents cannot delegate further, and work that writes or spends (rebuilds) goes through the host's approval.
  */
 import type { Investigation } from "../schema";
-import { collect, type ChatRequest, type Message, type ModelInfo, type Provider, type ToolCall, type ToolDef } from "./types";
+import { collect, type ChatRequest, type Message, type ModelInfo, type Part, type Provider, type ToolCall, type ToolDef } from "./types";
 import { ROLES } from "./agents";
 import { featureBrief, siteBrief, REBUILD_MODES, STACKS, type RebuildMode } from "./plans";
 import { relevantContext } from "./retrieval";
@@ -38,6 +38,8 @@ export interface OrchestratorOptions {
   /** Earlier turns (user/assistant text only). */
   history: { role: "user" | "assistant"; content: string }[];
   message: string;
+  /** Images attached to this message (sent as image parts; needs a vision-capable model). */
+  images?: ImageAttachment[];
   host: ReaHost;
   onEvent?: (e: OrchestratorEvent) => void;
   signal?: AbortSignal;
@@ -165,14 +167,23 @@ export async function runOrchestrator(o: OrchestratorOptions): Promise<Orchestra
   const known = o.host.investigations().slice(0, 30).map(invLine).join("\n");
   const att = o.host.attachments?.() ?? [];
   const system = `${SECURITY_PREAMBLE}\n\n${ORCHESTRATOR_SYSTEM}\n\nInvestigations in this project:\n${known || "(none yet)"}${att.length ? `\n\nAttached files: ${att.map((f) => `${f.name} (${f.bytes} bytes)`).join(", ")}` : ""}`;
-  const messages: Message[] = [...o.history.slice(-16).map((m) => ({ role: m.role, content: m.content }) as Message), { role: "user", content: o.message }];
+  const messages: Message[] = [...o.history.slice(-16).map((m) => ({ role: m.role, content: m.content }) as Message), { role: "user", content: userContent(o.message, o.images) }];
   const trace: { name: string; ok: boolean }[] = [];
   const r = await loop({ provider: o.provider, model: o.model, system, messages, tools, signal: o.signal, maxSteps: o.maxSteps ?? 16, emit, trace });
   return { text: r.text, steps: r.steps, toolCalls: trace, investigations: [...touched] };
 }
 
 /** Single-model chat with optional attached text (fenced as untrusted). */
-export function singleChatRequest(o: { model: string; system?: string; history: { role: "user" | "assistant"; content: string }[]; message: string; attachments?: { name: string; text: string }[] }): ChatRequest {
+/** An image attached to a chat message. `data` is raw base64 (a `data:` URL is accepted and stripped). */
+export interface ImageAttachment { name?: string; mediaType: string; data: string }
+
+/** Plain string when there are no images; otherwise a text part followed by one image part per attachment. */
+export function userContent(text: string, images?: ImageAttachment[]): string | Part[] {
+  if (!images?.length) return text;
+  return [{ type: "text", text }, ...images.map((im): Part => { const m = /^data:([^;,]+);base64,(.*)$/s.exec(im.data); return { type: "image", mediaType: m?.[1] ?? im.mediaType, data: m?.[2] ?? im.data }; })];
+}
+
+export function singleChatRequest(o: { model: string; system?: string; history: { role: "user" | "assistant"; content: string }[]; message: string; attachments?: { name: string; text: string }[]; images?: ImageAttachment[] }): ChatRequest {
   const files = (o.attachments ?? []).map((f) => untrusted(`attachment:${f.name}`, f.text, 40_000)).join("\n\n");
-  return { model: o.model, system: `${SECURITY_PREAMBLE}\n\n${o.system ?? "You are a helpful expert assistant inside OmniForge RE, a reverse-engineering and app-rebuilding studio."}`, messages: [...o.history.slice(-20).map((m) => ({ role: m.role, content: m.content }) as Message), { role: "user", content: files ? `${files}\n\n${o.message}` : o.message }] };
+  return { model: o.model, system: `${SECURITY_PREAMBLE}\n\n${o.system ?? "You are a helpful expert assistant inside OmniForge RE, a reverse-engineering and app-rebuilding studio."}`, messages: [...o.history.slice(-20).map((m) => ({ role: m.role, content: m.content }) as Message), { role: "user", content: userContent(files ? `${files}\n\n${o.message}` : o.message, o.images) }] };
 }

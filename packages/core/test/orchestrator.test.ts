@@ -129,4 +129,23 @@ describe("single-model chat", () => {
     expect(last.endsWith("what does this do?")).toBe(true);
     expect(req.system).toContain("SECURITY RULES");
   });
+
+  it("sends attached images as image parts and still fences text attachments", () => {
+    const req = singleChatRequest({ model: "m", history: [], message: "what is on screen?", attachments: [{ name: "app.js", text: "fetch('/api/cart')" }], images: [{ name: "shot.png", mediaType: "image/png", data: "data:image/png;base64,iVBORw0KGgo=" }, { mediaType: "image/jpeg", data: "/9j/4AAQ" }] });
+    const content = req.messages.at(-1)!.content;
+    expect(Array.isArray(content)).toBe(true);
+    const parts = content as Exclude<typeof content, string>;
+    expect(parts).toHaveLength(3);
+    expect(parts[0]!.type).toBe("text");
+    const text = (parts[0] as { text: string }).text;
+    expect(text).toMatch(/^<<<UNTRUSTED_DATA label="attachment:app.js"/);
+    expect(text.endsWith("what is on screen?")).toBe(true);
+    expect(parts[1]).toEqual({ type: "image", mediaType: "image/png", data: "iVBORw0KGgo=" });
+    expect(parts[2]).toEqual({ type: "image", mediaType: "image/jpeg", data: "/9j/4AAQ" });
+  });
+
+  it("keeps plain string content when no images are attached", () => {
+    const req = singleChatRequest({ model: "m", history: [], message: "hi", images: [] });
+    expect(req.messages.at(-1)!.content).toBe("hi");
+  });
 });
