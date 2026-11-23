@@ -21,6 +21,7 @@ export * from "./analyze/coverage.js";
 export * from "./analyze/graph.js";
 export type { Facts } from "./analyze/facts.js";
 export * from "./report/report.js";
+export * from "./report/standards.js";
 export * from "./project/project.js";
 export * from "./ai/types.js";
 export * from "./ai/stream.js";

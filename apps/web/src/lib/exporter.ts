@@ -1,9 +1,9 @@
-import { exportBundle, graphExport, renderHtml, renderMarkdown, mermaidSitemap, mermaidStack, type Investigation } from "@omniforge/core";
+import { exportBundle, graphExport, renderHtml, renderMarkdown, mermaidSitemap, mermaidStack, toCycloneDX, toSarif, type Investigation } from "@omniforge/core";
 import { download } from "./utils";
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "report";
 
-export type ExportFormat = "json" | "md" | "html" | "pdf" | "graph" | "mermaid" | "zip";
+export type ExportFormat = "json" | "md" | "html" | "pdf" | "graph" | "mermaid" | "zip" | "cyclonedx" | "sarif";
 export const EXPORTS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: "zip", label: "Full bundle (ZIP)", hint: "report + graph + evidence + recovered sources" },
   { id: "html", label: "HTML report", hint: "self-contained, printable" },
@@ -12,6 +12,8 @@ export const EXPORTS: { id: ExportFormat; label: string; hint: string }[] = [
   { id: "json", label: "JSON", hint: "everything, machine-readable" },
   { id: "graph", label: "Graph JSON", hint: "nodes & edges" },
   { id: "mermaid", label: "Mermaid diagrams", hint: "sitemap + stack" },
+  { id: "cyclonedx", label: "CycloneDX SBOM", hint: "CycloneDX 1.5 JSON of dependencies" },
+  { id: "sarif", label: "SARIF", hint: "SARIF 2.1.0 JSON of findings" },
 ];
 
 export function exportInvestigation(inv: Investigation, fmt: ExportFormat) {
@@ -22,6 +24,8 @@ export function exportInvestigation(inv: Investigation, fmt: ExportFormat) {
     case "md": return download(`${base}-report.md`, renderMarkdown(inv), "text/markdown");
     case "json": return download(`${base}.json`, JSON.stringify(inv, null, 2), "application/json");
     case "graph": return download(`${base}-graph.json`, JSON.stringify(graphExport(inv), null, 2), "application/json");
+    case "cyclonedx": return download(`${base}.cdx.json`, JSON.stringify(toCycloneDX(inv), null, 2), "application/vnd.cyclonedx+json");
+    case "sarif": return download(`${base}.sarif`, JSON.stringify(toSarif(inv), null, 2), "application/sarif+json");
     case "mermaid": return download(`${base}-diagrams.md`, `# ${inv.name}\n\n## Sitemap\n\n\`\`\`mermaid\n${mermaidSitemap(inv)}\n\`\`\`\n\n## Stack\n\n\`\`\`mermaid\n${mermaidStack(inv)}\n\`\`\`\n`, "text/markdown");
     case "pdf": {
       // render the (escaped) HTML report in a hidden sandboxed iframe and print it
