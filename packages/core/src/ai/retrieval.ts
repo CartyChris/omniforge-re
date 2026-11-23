@@ -96,3 +96,48 @@ export function relevantContext(inv: Investigation, question: string, o: { budge
   }
   return { text: parts.length ? untrusted("retrieved-passages", parts.join("\n\n"), budget + 200) : "", hits };
 }
+
+/** The Investigation Detail tab that shows a chunk of each kind, for deep links from cross-investigation search. */
+export const CHUNK_TAB: Record<Chunk["kind"], string> = { evidence: "evidence", page: "pages", file: "files", endpoint: "apis", feature: "features", finding: "findings" };
+
+export interface CrossHit { investigationId: string; investigationName: string; kind: Chunk["kind"]; chunkId: string; label: string; snippet: string; score: number }
+
+const indexOf = (inv: Investigation) => { let ix = indexCache.get(inv); if (!ix) { ix = buildIndex(investigationChunks(inv)); indexCache.set(inv, ix); } return ix; };
+
+/** ~`width` characters of `text` around the first occurrence of any query term (the start of the text when none occurs literally). */
+export function snippetFor(text: string, terms: string[], width = 160): string {
+  const flat = text.replace(/\s+/g, " ").trim(); const low = flat.toLowerCase();
+  let at = -1;
+  for (const t of terms) { const i = low.indexOf(t); if (i >= 0 && (at < 0 || i < at)) at = i; }
+  if (at < 0) return flat.slice(0, width) + (flat.length > width ? "…" : "");
+  const start = Math.max(0, at - Math.floor(width / 3)); const end = Math.min(flat.length, start + width);
+  return (start > 0 ? "…" : "") + flat.slice(start, end) + (end < flat.length ? "…" : "");
+}
+
+/**
+ * BM25 over the chunks of every investigation at once: term statistics (N, df, average length) are pooled across all of
+ * them so scores are comparable, while each investigation's tokenised index is built once and cached per object (WeakMap).
+ */
+export function searchInvestigations(invs: readonly Investigation[], query: string, k = 20): CrossHit[] {
+  const q = [...new Set(tokenize(query))]; if (!q.length || k <= 0) return [];
+  const ixs = invs.map(indexOf);
+  let N = 0, total = 0; const df = new Map<string, number>();
+  for (const ix of ixs) { N += ix.chunks.length; total += ix.len.reduce((a, b) => a + b, 0); for (const t of q) { const n = ix.df.get(t); if (n) df.set(t, (df.get(t) ?? 0) + n); } }
+  const avg = total / Math.max(1, N) || 1;
+  const scored: (CrossHit & { o: number })[] = []; let o = 0;
+  ixs.forEach((ix, j) => {
+    const inv = invs[j]!;
+    for (let i = 0; i < ix.chunks.length; i++, o++) {
+      let s = 0;
+      for (const t of q) {
+        const f = ix.tf[i]!.get(t); if (!f) continue;
+        const n = df.get(t)!; const idf = Math.log(1 + (N - n + 0.5) / (n + 0.5));
+        s += idf * (f * 2.2) / (f + 1.2 * (1 - 0.75 + 0.75 * ix.len[i]! / avg));
+      }
+      if (s <= 0) continue;
+      const ch = ix.chunks[i]!;
+      scored.push({ investigationId: inv.id, investigationName: inv.name, kind: ch.kind, chunkId: ch.id, label: ch.label, snippet: snippetFor(`${ch.text} ${ch.label}`, q), score: s, o });
+    }
+  });
+  return scored.sort((a, b) => b.score - a.score || a.o - b.o).slice(0, k).map(({ o: _o, ...h }) => h);
+}
